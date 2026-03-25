@@ -44,6 +44,7 @@
         energy: { start: 1, max: 10, shardGain: 1, convertGain: 1 },
         damage: { common: 22, type: 30 },
         enemyHandArea: { x: 24, y: 70, width: 760, height: 82 },
+        enemyHeader: { x: 24, y: 20, width: 1152, height: 44, iconSize: 30 },
         monsterArea: { x: 24, y: 160, width: 760, height: 306 },
         middleBand: { x: 24, y: 472, width: 760, height: 44 },
         turnBanner: { x: 34, y: 477, width: 420, height: 34 },
@@ -95,10 +96,11 @@
           closeLog: 'Close Log',
         },
         panel: {
+          enemyHeaderTitle: 'Enemy',
           enemyHand: 'Enemy Hand (Visible)',
           playerHand: 'Player Hand',
           contextTitle: 'Context / Detail',
-          fieldTitle: 'Shared Field Resources',
+          battleInfoTitle: 'Battle Info',
           logTitle: 'Battle Log',
         },
         msg: {
@@ -137,6 +139,7 @@
         },
         state: {
           none: 'none',
+          enemyIdleMessage: '様子見中だぜ…',
         },
       };
 
@@ -179,7 +182,7 @@
         enemyActionsDone: 0,
         inputQueue: [],
         imageStore: {},
-        ui: { showLogOverlay: false, invalidReason: TEXT.state.none },
+        ui: { showLogOverlay: false, invalidReason: TEXT.state.none, enemyMessage: TEXT.state.enemyIdleMessage },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
         field: {
@@ -234,6 +237,10 @@
         if (gameState.log.length > CONFIG.maxLogEntries) {
           gameState.log.shift();
         }
+      }
+
+      function setEnemyMessage(message) {
+        gameState.ui.enemyMessage = message || TEXT.state.enemyIdleMessage;
       }
 
       function makeMonster(id, name, element, spriteKey) {
@@ -619,6 +626,8 @@
         resetMonstersActionState(side);
         clearSelection();
         gameState.temp.gutsSelectedCardIds = [];
+        if (side === 'enemy') setEnemyMessage('カードを引くぜ！');
+        else setEnemyMessage(TEXT.state.enemyIdleMessage);
         runDrawPhase(side);
       }
 
@@ -628,6 +637,7 @@
         gameState.turnPhase = 'attack';
         appendLog(formatText(TEXT.msg.attackStart, { side: capitalize(side) }));
         if (side === 'enemy') {
+          setEnemyMessage('攻撃するぜ！');
           gameState.enemyActionTimer = performance.now() + 450;
         }
       }
@@ -638,6 +648,7 @@
       }
 
       function runEnemyGutsPhase() {
+        setEnemyMessage('宵越しのカードは残さないよ！');
         const enemyCardIds = gameState.enemy.hand.map((card) => card.id);
         applyGutsConversion('enemy', enemyCardIds);
         finishTurn();
@@ -776,6 +787,11 @@
 
       function runEnemyAttackStep() {
         if (gameState.turnSide !== 'enemy' || gameState.turnPhase !== 'attack') return;
+        if (gameState.enemy.monsters.filter((m) => m.alive).length <= 1) {
+          setEnemyMessage('ピンチだぜぃ！');
+        } else {
+          setEnemyMessage('攻撃するぜ！');
+        }
 
         const playable = gameState.enemy.hand.filter((card) => getCardUsability('enemy', card).playable);
 
@@ -1219,6 +1235,41 @@
         );
       }
 
+      function drawEnemyHeader() {
+        drawPanel(
+          CONFIG.enemyHeader.x,
+          CONFIG.enemyHeader.y,
+          CONFIG.enemyHeader.width,
+          CONFIG.enemyHeader.height
+        );
+
+        const iconX = CONFIG.enemyHeader.x + 10;
+        const iconY = CONFIG.enemyHeader.y + 7;
+        drawAssetOrFallback('enemyEmber', iconX, iconY, CONFIG.enemyHeader.iconSize, CONFIG.enemyHeader.iconSize);
+
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(TEXT.panel.enemyHeaderTitle, iconX + CONFIG.enemyHeader.iconSize + 8, iconY + 12);
+
+        const messageX = CONFIG.enemyHeader.x + 170;
+        const msgLines = wrapText(gameState.ui.enemyMessage, 470).slice(0, 2);
+        ctx.font = '15px Arial';
+        msgLines.forEach((line, idx) => {
+          ctx.fillText(line, messageX, CONFIG.enemyHeader.y + 18 + idx * 16);
+        });
+
+        const infoX = CONFIG.enemyHeader.x + CONFIG.enemyHeader.width - 288;
+        const enemyDeckMax = gameState.enemy.deck.length + gameState.enemy.discard.length + gameState.enemy.hand.length;
+
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(`Hand ×${gameState.enemy.hand.length}   Guts ${gameState.enemy.guts}`, infoX, CONFIG.enemyHeader.y + 18);
+        ctx.font = '13px Arial';
+        ctx.fillStyle = '#d7e4ff';
+        ctx.fillText(`Deck ${gameState.enemy.deck.length} / ${enemyDeckMax}   Discard ${gameState.enemy.discard.length}`, infoX, CONFIG.enemyHeader.y + 34);
+      }
+
       function getSelectedCard() {
         return getCardFromHand(gameState.player, gameState.selectedCardId);
       }
@@ -1328,37 +1379,26 @@
         }
       }
 
-      function drawFieldPanel() {
+      function drawBattleInfoPanel() {
         drawPanel(CONFIG.fieldPanel.x, CONFIG.fieldPanel.y, CONFIG.fieldPanel.width, CONFIG.fieldPanel.height);
 
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(TEXT.panel.fieldTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
-        drawElementPill('fire', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 54, gameState.field.fire, CONFIG.energy.max);
-        drawElementPill('thunder', CONFIG.fieldPanel.x + 122, CONFIG.fieldPanel.y + 54, gameState.field.thunder, CONFIG.energy.max);
-        drawElementPill('earth', CONFIG.fieldPanel.x + 232, CONFIG.fieldPanel.y + 54, gameState.field.earth, CONFIG.energy.max);
+        ctx.fillText(TEXT.panel.battleInfoTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
 
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText('Guts変換: Gutsフェーズで選択した手札はEnd Turn時に変換', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 102);
-        ctx.font = '15px Arial';
-        ctx.fillStyle = '#d7e4ff';
-        ctx.fillText('1枚ごとに +1 Guts / +1 対応属性(F/T/E)', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 126);
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText(`Player Guts ${gameState.player.guts} / ${gameState.player.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 78);
 
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 17px Arial';
-        ctx.fillText(`Player Guts ${gameState.player.guts}/${gameState.player.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 164);
-        ctx.fillText(`Enemy Guts ${gameState.enemy.guts}/${gameState.enemy.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 190);
-
-        ctx.fillStyle = '#d7e4ff';
-        ctx.font = '15px Arial';
-        ctx.fillText(`Player Deck ${gameState.player.deck.length} / Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 218);
-        ctx.fillText(`Enemy Deck ${gameState.enemy.deck.length} / Discard ${gameState.enemy.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 240);
+        drawElementPill('fire', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 98, gameState.field.fire, CONFIG.energy.max);
+        drawElementPill('thunder', CONFIG.fieldPanel.x + 122, CONFIG.fieldPanel.y + 98, gameState.field.thunder, CONFIG.energy.max);
+        drawElementPill('earth', CONFIG.fieldPanel.x + 232, CONFIG.fieldPanel.y + 98, gameState.field.earth, CONFIG.energy.max);
 
         ctx.fillStyle = CONFIG.colors.muted;
-        ctx.font = '13px Arial';
-        ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 262);
+        ctx.font = '14px Arial';
+        const playerDeckMax = gameState.player.deck.length + gameState.player.discard.length + gameState.player.hand.length;
+        ctx.fillText(`Deck ${gameState.player.deck.length} / ${playerDeckMax}   Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 148);
       }
 
 function drawLogOverlay() {
@@ -1408,12 +1448,13 @@ function drawLogOverlay() {
 
         gameState.uiRects = { playerCards: [], monsters: [], buttons: [] };
 
+        drawEnemyHeader();
         drawEnemyHandArea();
         drawBattleArea();
         drawMiddleBand();
         drawPlayerHandArea();
         drawContextPanel();
-        drawFieldPanel();
+        drawBattleInfoPanel();
         drawLogOverlay();
       }
 
@@ -1479,6 +1520,7 @@ function drawLogOverlay() {
         gameState.log = [];
         gameState.winner = null;
         gameState.ui.showLogOverlay = false;
+        gameState.ui.enemyMessage = TEXT.state.enemyIdleMessage;
         gameState.hoveredCardId = null;
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
