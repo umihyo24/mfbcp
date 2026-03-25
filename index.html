@@ -1356,6 +1356,113 @@
         msgLines.forEach((line, idx) => {
           ctx.fillText(line, x + 10, y + 44 + idx * 20);
         });
+
+        if (gameState.ui.effectPreview.visible) {
+          const side = gameState.ui.effectPreview.side;
+          const halfWidth = CONFIG.monsterArea.width / 2;
+          const tintX = side === 'player' ? CONFIG.monsterArea.x : CONFIG.monsterArea.x + halfWidth;
+          ctx.fillStyle = 'rgba(149, 202, 255, 0.08)';
+          ctx.fillRect(tintX, CONFIG.monsterArea.y, halfWidth, CONFIG.monsterArea.height);
+        }
+      }
+
+      function drawEffectPreview() {
+        const preview = gameState.ui.effectPreview;
+        if (!preview.visible) return;
+
+        const panelW = 330;
+        const panelH = 400;
+        const panelX = preview.side === 'player' ? 120 : CONFIG.w - panelW - 120;
+        const panelY = Math.floor((CONFIG.h - panelH) / 2);
+
+        const card = findCardById(preview.cardId);
+        const cardName = preview.cardName || card?.name || 'Unknown Card';
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(6, 12, 22, 0.35)';
+        ctx.fillRect(0, 0, CONFIG.w, CONFIG.h);
+
+        ctx.fillStyle = 'rgba(22, 38, 70, 0.95)';
+        ctx.fillRect(panelX, panelY, panelW, panelH);
+        ctx.strokeStyle = '#9ad7ff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+        ctx.shadowColor = 'rgba(130, 214, 255, 0.45)';
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = 'rgba(130, 214, 255, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(panelX + 6, panelY + 6, panelW - 12, panelH - 12);
+        ctx.shadowBlur = 0;
+
+        drawAssetOrFallback(
+          card?.asset || preview.cardId,
+          panelX + 20,
+          panelY + 26,
+          panelW - 40,
+          220,
+          cardName
+        );
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText(cardName, panelX + 20, panelY + 280);
+
+        if (preview.actorName) {
+          ctx.font = '16px Arial';
+          ctx.fillStyle = '#cde1ff';
+          ctx.fillText(preview.actorName, panelX + 20, panelY + 310);
+        }
+
+        ctx.font = 'bold 22px Arial';
+        ctx.fillStyle = '#ffe08e';
+        ctx.fillText(preview.message || cardName, panelX + 20, panelY + 350);
+        ctx.restore();
+      }
+
+      function drawEnemyIconBox(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        drawAssetOrFallback('monsters.enemy_beast_bear', x + 8, y + 8, width - 16, height - 16, 'enemy');
+      }
+
+      function drawMiniEnemyHand(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        ctx.fillStyle = '#dfe9ff';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText('Enemy Hand', x + 10, y + 18);
+
+        const startX = x + 10;
+        const cardY = y + 26;
+        const maxVisible = Math.max(1, Math.floor((width - 20) / (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap)));
+        gameState.enemy.hand.slice(0, maxVisible).forEach((card, index) => {
+          const cardX = startX + index * (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap);
+          drawAssetOrFallback(
+            card.asset,
+            cardX,
+            cardY,
+            CONFIG.enemyMiniCard.width,
+            CONFIG.enemyMiniCard.height,
+            card.name
+          );
+          ctx.strokeStyle = '#86a4dc';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(cardX, cardY, CONFIG.enemyMiniCard.width, CONFIG.enemyMiniCard.height);
+        });
+      }
+
+      function drawEnemyInfoPanel(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        const enemyDeckMax = gameState.enemy.deck.length + gameState.enemy.discard.length + gameState.enemy.hand.length;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 17px Arial';
+        ctx.fillText(`Hand ×${gameState.enemy.hand.length}   Guts ${gameState.enemy.guts}`, x + 10, y + 34);
+        ctx.font = '13px Arial';
+        ctx.fillStyle = '#d7e4ff';
+        ctx.fillText(`Deck ${gameState.enemy.deck.length} / ${enemyDeckMax}`, x + 10, y + 58);
+        ctx.fillText(`Discard ${gameState.enemy.discard.length}`, x + 10, y + 78);
       }
 
       function drawEnemyIconBox(x, y, width, height) {
