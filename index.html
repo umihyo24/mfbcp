@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Monster Card Battle MVP</title>
+  <title>カードバトル MVP</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -11,26 +11,27 @@
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: #101a38;
-      font-family: Arial, sans-serif;
+      background: linear-gradient(160deg, #0c1630, #15284f);
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+      color: #eef4ff;
     }
     canvas {
-      border: 2px solid #304c8e;
-      box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
-      background: #1f3564;
-      width: min(96vw, 1200px);
+      width: min(96vw, 1240px);
       height: auto;
-      aspect-ratio: 1200 / 720;
+      aspect-ratio: 1240 / 780;
+      border: 2px solid #4567a5;
+      background: #13264b;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
     }
   </style>
 </head>
 <body>
-  <canvas id="game" width="1200" height="720"></canvas>
-
+  <canvas id="game" width="1240" height="780"></canvas>
   <script>
     (() => {
     const CONFIG = {
-      canvas: { width: 1200, height: 720 },
+      w: 1240,
+      h: 780,
       teamSize: 3,
       handSize: 5,
       maxLogEntries: 140,
@@ -114,6 +115,28 @@
       state: {
         none: 'none',
       },
+      reason: {
+        noCard: 'No card selected.',
+        shardAlways: 'SHARD is always playable.',
+        needGuts: 'Not enough Guts ({have}/{need}).',
+        needEnergy: 'Not enough {element} energy ({have}/{need}).',
+        needActor: 'Select a living actor monster.',
+        needTarget: 'Select a valid target monster.',
+        waitAttackPhase: 'Card can be used only in attack phase.',
+      },
+      state: {
+        none: 'none',
+      },
+      rect: {
+        turn: { x: 20, y: 16, w: 760, h: 48 },
+        enemyRow: { x: 20, y: 74, w: 760, h: 182 },
+        playerRow: { x: 20, y: 266, w: 760, h: 182 },
+        hand: { x: 20, y: 458, w: 760, h: 210 },
+        detail: { x: 790, y: 74, w: 430, h: 260 },
+        resource: { x: 790, y: 344, w: 430, h: 150 },
+        log: { x: 790, y: 504, w: 430, h: 244 },
+        startOverlay: { x: 250, y: 200, w: 740, h: 380 }
+      }
     };
 
     const ASSETS = {
@@ -127,7 +150,9 @@
       },
     };
 
-    const ctx = document.getElementById('game').getContext('2d');
+    const ELEMENTS = ["fire", "thunder", "earth"];
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
     const gameState = {
       phase: 'start',
@@ -378,6 +403,20 @@
         gameState.winner = enemyAlive === 0 ? 'player' : 'enemy';
         appendLog(formatText(TEXT.msg.win, { side: capitalize(gameState.winner) }));
       }
+      const card = getCardFromHand(gameState.player, cardId);
+      const usability = getCardUsability('player', card);
+      if (!usability.playable) {
+        gameState.ui.invalidReason = usability.reason;
+        appendLog(formatText(TEXT.msg.invalidCard, { reason: usability.reason }));
+        clearSelection();
+        return;
+      }
+      gameState.selectedCardId = cardId;
+      gameState.selectionStep = 'selectActor';
+      gameState.selectedActorId = null;
+      gameState.selectedTargetId = null;
+      gameState.ui.invalidReason = TEXT.state.none;
+      appendLog(formatText(TEXT.msg.selectCard, { card: card.name }));
     }
 
     function beginPlayerCardSelection(cardId) {
@@ -532,6 +571,9 @@
         if (gameState.turnPhase === 'attack') beginPlayerCardSelection(cardHit.id);
         if (gameState.turnPhase === 'guts') togglePlayerGutsCard(cardHit.id);
       }
+      if (action === 'convert' && gameState.turnPhase === 'guts') convertSelectedPlayerCards();
+      if (action === 'endAttack' && gameState.turnPhase === 'attack') endPlayerAttackPhase();
+      if (action === 'endTurn' && gameState.turnPhase === 'guts') finishPlayerGutsPhase();
     }
 
     function update() {
@@ -968,13 +1010,9 @@
       requestAnimationFrame(loop);
     }
 
-    function start() {
-      loadAssets();
-      initializeGame();
-      const canvas = document.getElementById('game');
-      canvas.addEventListener('click', onCanvasClick);
-      canvas.addEventListener('mousemove', onMouseMove);
-      canvas.addEventListener('wheel', onWheel, { passive: false });
+    function loop() {
+      update();
+      render();
       requestAnimationFrame(loop);
     }
 
