@@ -124,6 +124,8 @@
           needGuts: 'Not enough Guts ({have}/{need}).',
           needEnergy: 'Not enough {element} energy ({have}/{need}).',
           needActor: 'Select a living actor monster.',
+          actedActor: 'This monster has already acted this turn.',
+          typeMismatch: 'This monster cannot use that TYPE card.',
           needTarget: 'Select a valid target monster.',
           waitAttackPhase: 'Card can be used only in attack phase.',
         },
@@ -235,13 +237,16 @@
           name,
           element,
           spriteKey,
+          attackType: element,
+          defenseType: element,
+          hasActedThisTurn: false,
           hp: CONFIG.hp.base,
           maxHp: CONFIG.hp.base,
           alive: true
         };
       }
 
-      function makeCard(id, name, type, element, cost, energyReq, description, spriteKey, effect) {
+      function makeCard(id, name, type, element, cost, energyReq, description, spriteKey, effect, requiredAttackType = null) {
         return {
           id,
           name,
@@ -251,7 +256,8 @@
           energyReq,
           description,
           spriteKey,
-          effect
+          effect,
+          requiredAttackType
         };
       }
 
@@ -269,9 +275,9 @@
           makeCard(`${ownerPrefix}-c1`, 'Fire Jab', 'COMMON', 'fire', 2, { fire: 1, thunder: 0, earth: 0 }, 'Deal 22 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.common }),
           makeCard(`${ownerPrefix}-c2`, 'Bolt Jab', 'COMMON', 'thunder', 2, { fire: 0, thunder: 1, earth: 0 }, 'Deal 22 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.common }),
           makeCard(`${ownerPrefix}-c3`, 'Root Jab', 'COMMON', 'earth', 2, { fire: 0, thunder: 0, earth: 1 }, 'Deal 22 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c4`, 'Flame Burst', 'TYPE', 'fire', 3, { fire: 2, thunder: 0, earth: 0 }, 'Deal 30 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.type }),
-          makeCard(`${ownerPrefix}-c5`, 'Thunder Burst', 'TYPE', 'thunder', 3, { fire: 0, thunder: 2, earth: 0 }, 'Deal 30 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.type }),
-          makeCard(`${ownerPrefix}-c6`, 'Earth Burst', 'TYPE', 'earth', 3, { fire: 0, thunder: 0, earth: 2 }, 'Deal 30 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.type }),
+          makeCard(`${ownerPrefix}-c4`, 'Flame Burst', 'TYPE', 'fire', 3, { fire: 2, thunder: 0, earth: 0 }, 'Deal 30 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.type }, 'fire'),
+          makeCard(`${ownerPrefix}-c5`, 'Thunder Burst', 'TYPE', 'thunder', 3, { fire: 0, thunder: 2, earth: 0 }, 'Deal 30 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.type }, 'thunder'),
+          makeCard(`${ownerPrefix}-c6`, 'Earth Burst', 'TYPE', 'earth', 3, { fire: 0, thunder: 0, earth: 2 }, 'Deal 30 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.type }, 'earth'),
           makeCard(`${ownerPrefix}-c7`, 'Fire Shard', 'SHARD', 'fire', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Fire Energy.', 'fireShard', { kind: 'shard', energy: 'fire' }),
           makeCard(`${ownerPrefix}-c8`, 'Thunder Shard', 'SHARD', 'thunder', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Thunder Energy.', 'thunderShard', { kind: 'shard', energy: 'thunder' }),
           makeCard(`${ownerPrefix}-c9`, 'Earth Shard', 'SHARD', 'earth', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Earth Energy.', 'earthShard', { kind: 'shard', energy: 'earth' }),
@@ -302,7 +308,13 @@
         return sideData.monsters.find((monster) => monster.id === monsterId) || null;
       }
 
-      function getCardUsability(side, card) {
+      function isAttackTypeMatch(card, actor) {
+        if (!card || !actor) return true;
+        if (card.type !== 'TYPE') return true;
+        return card.requiredAttackType === actor.attackType;
+      }
+
+      function getCardUsability(side, card, actor = null) {
         const sideData = getSideData(side);
         if (!card) return { playable: false, reason: TEXT.reason.noCard };
         if (card.type === 'SHARD') return { playable: true, reason: TEXT.reason.shardAlways };
@@ -330,11 +342,47 @@
           }
         }
 
+        if (card.type === 'TYPE' && actor && !isAttackTypeMatch(card, actor)) {
+          return { playable: false, reason: TEXT.reason.typeMismatch };
+        }
+
         return { playable: true, reason: '' };
       }
 
+      function canMonsterAct(monster) {
+        return monster.alive && !monster.hasActedThisTurn;
+      }
+
       function getValidActorIds(side) {
-        return getLivingMonsters(getSideData(side)).map((monster) => monster.id);
+        return getSideData(side).monsters
+          .filter((monster) => canMonsterAct(monster))
+          .map((monster) => monster.id);
+      }
+
+      function getActorSelectionValidation(side, monsterId, card) {
+        const monster = getMonster(getSideData(side), monsterId);
+        if (!monster || !monster.alive) {
+          return { valid: false, reason: TEXT.reason.needActor };
+        }
+        if (monster.hasActedThisTurn) {
+          return { valid: false, reason: TEXT.reason.actedActor };
+        }
+        if (card && card.type === 'TYPE' && !isAttackTypeMatch(card, monster)) {
+          return { valid: false, reason: TEXT.reason.typeMismatch };
+        }
+        return { valid: true, reason: '' };
+      }
+
+      function markMonsterActed(side, monsterId) {
+        const monster = getMonster(getSideData(side), monsterId);
+        if (!monster) return;
+        monster.hasActedThisTurn = true;
+      }
+
+      function resetMonstersActionState(side) {
+        getSideData(side).monsters.forEach((monster) => {
+          monster.hasActedThisTurn = false;
+        });
       }
 
       function getValidTargetIds(side, card) {
@@ -459,6 +507,7 @@
         gameState.turnSide = side;
         gameState.turnPhase = 'draw';
         gameState.enemyActionsDone = 0;
+        resetMonstersActionState(side);
         clearSelection();
         gameState.temp.gutsSelectedCardIds = [];
         runDrawPhase(side);
@@ -532,8 +581,10 @@
       function trySelectActor(monsterId) {
         if (gameState.selectionStep !== 'selectActor') return;
 
-        if (!getValidActorIds('player').includes(monsterId)) {
-          gameState.ui.invalidReason = TEXT.reason.needActor;
+        const card = getCardFromHand(gameState.player, gameState.selectedCardId);
+        const validation = getActorSelectionValidation('player', monsterId, card);
+        if (!validation.valid) {
+          gameState.ui.invalidReason = validation.reason;
           return;
         }
 
@@ -561,6 +612,9 @@
         const applied = applyCard('player', card, gameState.selectedActorId, gameState.selectedTargetId);
 
         if (applied) {
+          if (card.effect.kind === 'damage') {
+            markMonsterActed('player', gameState.selectedActorId);
+          }
           moveCardToDiscard('player', card.id);
         }
 
@@ -623,7 +677,10 @@
         }
 
         const card = playable[0];
-        const actorIds = getValidActorIds('enemy');
+        const actorIds = getValidActorIds('enemy').filter((actorId) => {
+          const actor = getMonster(gameState.enemy, actorId);
+          return actor && isAttackTypeMatch(card, actor);
+        });
         const targetIds = getValidTargetIds('enemy', card);
 
         if (actorIds.length === 0 || targetIds.length === 0) {
@@ -635,9 +692,14 @@
         const actorId = actorIds[0];
         const targetId = targetIds[0];
 
-        applyCard('enemy', card, actorId, targetId);
-        moveCardToDiscard('enemy', card.id);
-        gameState.enemyActionsDone += 1;
+        const applied = applyCard('enemy', card, actorId, targetId);
+        if (applied) {
+          if (card.effect.kind === 'damage') {
+            markMonsterActed('enemy', actorId);
+          }
+          moveCardToDiscard('enemy', card.id);
+          gameState.enemyActionsDone += 1;
+        }
         checkWinCondition();
       }
 
@@ -832,6 +894,7 @@
 
         const selectedActor = gameState.selectedActorId === monster.id;
         const selectedTarget = gameState.selectedTargetId === monster.id;
+        const acted = monster.hasActedThisTurn && monster.alive;
 
         if (validActor) {
           ctx.fillStyle = CONFIG.colors.actorSoft;
@@ -863,17 +926,26 @@
         ctx.fillText(monster.name, x + 84, y + 30);
         ctx.font = '14px Arial';
         ctx.fillText(`HP ${monster.hp}/${monster.maxHp}`, x + 84, y + 54);
+        ctx.fillText(`ATK ${monster.attackType} / DEF ${monster.defenseType}`, x + 84, y + 78);
 
         ctx.fillStyle = CONFIG.colors.hpBack;
-        ctx.fillRect(x + 84, y + 62, CONFIG.monsterCard.hpBarWidth, CONFIG.monsterCard.hpBarHeight);
+        ctx.fillRect(x + 84, y + 86, CONFIG.monsterCard.hpBarWidth, CONFIG.monsterCard.hpBarHeight);
 
         ctx.fillStyle = CONFIG.colors.hp;
         ctx.fillRect(
           x + 84,
-          y + 62,
+          y + 86,
           CONFIG.monsterCard.hpBarWidth * (monster.hp / monster.maxHp),
           CONFIG.monsterCard.hpBarHeight
         );
+
+        if (acted) {
+          ctx.fillStyle = 'rgba(10, 14, 24, 0.48)';
+          ctx.fillRect(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
+          ctx.fillStyle = '#ffd073';
+          ctx.font = 'bold 14px Arial';
+          ctx.fillText('ACTED', x + 12, y + 24);
+        }
 
         if (!monster.alive) {
           ctx.fillStyle = CONFIG.colors.dead;
@@ -968,7 +1040,10 @@
         ctx.font = 'bold 13px Arial';
         ctx.fillText(card.name, dx + 8, dy + 92);
         ctx.font = '12px Arial';
-        ctx.fillText(`${card.type} / Cost ${card.cost}`, dx + 8, dy + 108);
+        const typeText = card.type === 'TYPE' && card.requiredAttackType
+          ? `${card.type}(${card.requiredAttackType})`
+          : card.type;
+        ctx.fillText(`${typeText} / Cost ${card.cost}`, dx + 8, dy + 108);
         ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, dx + 8, dy + 124);
 
         if (!usability.playable && gameState.turnPhase === 'attack') {
@@ -1074,7 +1149,8 @@
           ctx.fillStyle = CONFIG.colors.muted;
           ctx.fillText('Hover or select a card to inspect.', CONFIG.contextPanel.x + 12, y);
         } else {
-          const usability = getCardUsability('player', card);
+          const selectedActor = getMonster(gameState.player, gameState.selectedActorId);
+          const usability = getCardUsability('player', card, selectedActor);
 
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 18px Arial';
@@ -1084,6 +1160,10 @@
           ctx.font = '15px Arial';
           ctx.fillText(`Type: ${card.type} / Cost: ${card.cost}`, CONFIG.contextPanel.x + 12, y);
           y += 20;
+          if (card.type === 'TYPE' && card.requiredAttackType) {
+            ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
+            y += 20;
+          }
 
           ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, CONFIG.contextPanel.x + 12, y);
           y += 22;
