@@ -44,6 +44,7 @@
         energy: { start: 1, max: 10, shardGain: 1, convertGain: 1 },
         damage: { common: 22, type: 30 },
         enemyHandArea: { x: 24, y: 70, width: 760, height: 82 },
+        enemyHeader: { x: 24, y: 20, width: 1152, height: 44, iconSize: 30 },
         monsterArea: { x: 24, y: 160, width: 760, height: 306 },
         middleBand: { x: 24, y: 472, width: 760, height: 44 },
         turnBanner: { x: 34, y: 477, width: 420, height: 34 },
@@ -95,10 +96,11 @@
           closeLog: 'Close Log',
         },
         panel: {
+          enemyHeaderTitle: 'Enemy',
           enemyHand: 'Enemy Hand (Visible)',
           playerHand: 'Player Hand',
           contextTitle: 'Context / Detail',
-          fieldTitle: 'Shared Field Resources',
+          battleInfoTitle: 'Battle Info',
           logTitle: 'Battle Log',
         },
         msg: {
@@ -115,6 +117,9 @@
           invalidTarget: 'Invalid target.',
           cardUsedDamage: '{side} used {card} with {actor} on {target} for {amount}.',
           cardUsedShard: '{side} used {card} ({actor} -> {target}) for +1 Guts / +1 {energy} Energy.',
+          cardEnhanced: '{card} enhanced!',
+          cardEnhancedBonus: '{card} enhanced: +{bonus} damage',
+          cardConsume: '{card} consumed {detail}.',
           defeated: '{name} was defeated.',
           win: '{side} wins.',
         },
@@ -122,7 +127,10 @@
           noCard: 'No card selected.',
           shardAlways: 'SHARD is always playable.',
           needGuts: 'Not enough Guts ({have}/{need}).',
-          needEnergy: 'Not enough {element} energy ({have}/{need}).',
+          needFireShared: 'Not enough shared Fire energy.',
+          needThunderShared: 'Not enough shared Thunder energy.',
+          needEarthShared: 'Not enough shared Earth energy.',
+          needConsumeEnergy: 'Not enough shared field energy to pay consume cost.',
           needActor: 'Select a living actor monster.',
           actedActor: 'This monster has already acted this turn.',
           typeMismatch: 'This monster cannot use that TYPE card.',
@@ -131,25 +139,33 @@
         },
         state: {
           none: 'none',
+          enemyIdleMessage: '様子見中だぜ…',
         },
       };
 
       const ASSETS = {
         monsters: {
-          ember: '/assets/monsters/ember.png',
-          spark: '/assets/monsters/spark.png',
-          moss: '/assets/monsters/moss.png',
-          enemyEmber: '/assets/monsters/enemy_ember.png',
-          enemySpark: '/assets/monsters/enemy_spark.png',
-          enemyMoss: '/assets/monsters/enemy_moss.png',
+          beast_bear: '/assets/monsters/beast_bear.png',
+          thunder_wolf: '/assets/monsters/thunder_wolf.png',
+          earth_turtle: '/assets/monsters/earth_turtle.png',
+          enemy_beast_bear: '/assets/monsters/beast_bear.png',
+          enemy_thunder_wolf: '/assets/monsters/thunder_wolf.png',
+          enemy_earth_turtle: '/assets/monsters/earth_turtle.png',
         },
         cards: {
-          flameHit: '/assets/cards/flame_hit.png',
-          sparkHit: '/assets/cards/spark_hit.png',
-          earthHit: '/assets/cards/earth_hit.png',
-          fireShard: '/assets/cards/fire_shard.png',
-          thunderShard: '/assets/cards/thunder_shard.png',
-          earthShard: '/assets/cards/earth_shard.png',
+          atk_fire_common_punch: '/assets/cards/atk_fire_common_punch.png',
+          atk_thunder_common_punch: '/assets/cards/atk_thunder_common_punch.png',
+          atk_earth_common_punch: '/assets/cards/atk_earth_common_punch.png',
+          atk_fire_beast_magmaPunch: '/assets/cards/atk_fire_beast_magmaPunch.png',
+          atk_thunder_beast_boltBurst: '/assets/cards/atk_thunder_beast_boltBurst.png',
+          atk_earth_beast_rootBurst: '/assets/cards/atk_earth_beast_rootBurst.png',
+          atk_neutral_common_raiKa: '/assets/cards/atk_neutral_common_raiKa.png',
+          atk_fire_beast_megaFlame: '/assets/cards/atk_fire_beast_megaFlame.png',
+          atk_thunder_beast_stormNova: '/assets/cards/atk_thunder_beast_stormNova.png',
+          sup_fire_common_shard: '/assets/cards/sup_fire_common_shard.png',
+          sup_thunder_common_shard: '/assets/cards/sup_thunder_common_shard.png',
+          sup_earth_common_shard: '/assets/cards/sup_earth_common_shard.png',
+          def_beast_guard: '/assets/cards/def_beast_guard.png',
         },
       };
 
@@ -172,15 +188,17 @@
         enemyActionTimer: 0,
         enemyActionsDone: 0,
         inputQueue: [],
-        imageStore: {},
-        ui: { showLogOverlay: false, invalidReason: TEXT.state.none },
+        assets: {
+          refs: {},
+          warnedMissing: {}
+        },
+        ui: { showLogOverlay: false, invalidReason: TEXT.state.none, enemyMessage: TEXT.state.enemyIdleMessage },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
         field: {
           fire: CONFIG.energy.start,
           thunder: CONFIG.energy.start,
-          earth: CONFIG.energy.start,
-          maxEnergy: CONFIG.energy.max
+          earth: CONFIG.energy.start
         },
         player: {
           guts: CONFIG.guts.start,
@@ -231,12 +249,91 @@
         }
       }
 
-      function makeMonster(id, name, element, spriteKey) {
+      function resolveAssetPath(key) {
+        if (!key || typeof key !== 'string') return null;
+        const [category, name] = key.split('.');
+        if (!category || !name) return null;
+        const group = ASSETS[category];
+        if (!group || typeof group !== 'object') return null;
+        return group[name] || null;
+      }
+
+      function createImageRef(key, src) {
+        const img = new Image();
+        const ref = {
+          key,
+          src,
+          image: img,
+          ok: false,
+          failed: false
+        };
+        img.onload = () => {
+          ref.ok = true;
+          ref.failed = false;
+        };
+        img.onerror = () => {
+          ref.ok = false;
+          ref.failed = true;
+        };
+        img.src = src;
+        return ref;
+      }
+
+      function getImageRef(key) {
+        if (!key || typeof key !== 'string') return null;
+        const cached = gameState.assets.refs[key];
+        if (cached) return cached;
+
+        const path = resolveAssetPath(key);
+        if (!path) {
+          const missingRef = {
+            key,
+            src: null,
+            image: null,
+            ok: false,
+            failed: true
+          };
+          gameState.assets.refs[key] = missingRef;
+          return missingRef;
+        }
+
+        const created = createImageRef(key, path);
+        gameState.assets.refs[key] = created;
+        return created;
+      }
+
+      function drawAssetOrFallback(key, x, y, w, h, label) {
+        const ref = getImageRef(key);
+        if (ref && ref.ok && ref.image) {
+          ctx.drawImage(ref.image, x, y, w, h);
+          return;
+        }
+        if (ref && ref.failed && !gameState.assets.warnedMissing[key]) {
+          console.warn(`[asset-missing] ${key}`);
+          gameState.assets.warnedMissing[key] = true;
+        }
+
+        ctx.fillStyle = '#314d7f';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#6c8cd0';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(label || key || 'missing', x + w / 2, y + h / 2 + 4);
+      }
+
+      function setEnemyMessage(message) {
+        gameState.ui.enemyMessage = message || TEXT.state.enemyIdleMessage;
+      }
+
+      function makeMonster(id, name, element, type, asset) {
         return {
           id,
           name,
           element,
-          spriteKey,
+          type,
+          asset,
           attackType: element,
           defenseType: element,
           hasActedThisTurn: false,
@@ -246,16 +343,52 @@
         };
       }
 
-      function makeCard(id, name, type, element, cost, energyReq, description, spriteKey, effect, requiredAttackType = null) {
+      function normalizeEnergySet(value) {
+        return {
+          fire: value?.fire ?? 0,
+          thunder: value?.thunder ?? 0,
+          earth: value?.earth ?? 0,
+        };
+      }
+
+      function makeCard({
+        id,
+        name,
+        asset,
+        category = 'atk',
+        cardClass,
+        timing = 'attack',
+        element = null,
+        scope = 'common',
+        cost = 0,
+        requirement = { fire: 0, thunder: 0, earth: 0 },
+        enhance = null,
+        consume = { fire: 0, thunder: 0, earth: 0 },
+        description = '',
+        effect = { kind: 'damage', amount: 0 },
+        requiredAttackType = null
+      }) {
         return {
           id,
           name,
-          type,
+          asset,
+          category,
+          scope,
+          cardClass,
+          type: cardClass,
+          timing,
           element,
           cost,
-          energyReq,
+          requirement: normalizeEnergySet(requirement),
+          enhance: enhance
+            ? {
+              condition: normalizeEnergySet(enhance.condition),
+              bonusDamage: enhance.bonusDamage ?? 0,
+              bonusText: enhance.bonusText ?? ''
+            }
+            : null,
+          consume: normalizeEnergySet(consume),
           description,
-          spriteKey,
           effect,
           requiredAttackType
         };
@@ -272,18 +405,18 @@
 
       function createDeck(ownerPrefix) {
         const set = [
-          makeCard(`${ownerPrefix}-c1`, 'Fire Jab', 'COMMON', 'fire', 2, { fire: 1, thunder: 0, earth: 0 }, 'Deal 22 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c2`, 'Bolt Jab', 'COMMON', 'thunder', 2, { fire: 0, thunder: 1, earth: 0 }, 'Deal 22 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c3`, 'Root Jab', 'COMMON', 'earth', 2, { fire: 0, thunder: 0, earth: 1 }, 'Deal 22 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c4`, 'Flame Burst', 'TYPE', 'fire', 3, { fire: 2, thunder: 0, earth: 0 }, 'Deal 30 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.type }, 'fire'),
-          makeCard(`${ownerPrefix}-c5`, 'Thunder Burst', 'TYPE', 'thunder', 3, { fire: 0, thunder: 2, earth: 0 }, 'Deal 30 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.type }, 'thunder'),
-          makeCard(`${ownerPrefix}-c6`, 'Earth Burst', 'TYPE', 'earth', 3, { fire: 0, thunder: 0, earth: 2 }, 'Deal 30 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.type }, 'earth'),
-          makeCard(`${ownerPrefix}-c7`, 'Fire Shard', 'SHARD', 'fire', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Fire Energy.', 'fireShard', { kind: 'shard', energy: 'fire' }),
-          makeCard(`${ownerPrefix}-c8`, 'Thunder Shard', 'SHARD', 'thunder', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Thunder Energy.', 'thunderShard', { kind: 'shard', energy: 'thunder' }),
-          makeCard(`${ownerPrefix}-c9`, 'Earth Shard', 'SHARD', 'earth', 0, { fire: 0, thunder: 0, earth: 0 }, 'Gain +1 Guts and +1 Earth Energy.', 'earthShard', { kind: 'shard', energy: 'earth' }),
-          makeCard(`${ownerPrefix}-c10`, 'Fire Jab+', 'COMMON', 'fire', 2, { fire: 1, thunder: 0, earth: 0 }, 'Deal 22 damage to one enemy.', 'flameHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c11`, 'Bolt Jab+', 'COMMON', 'thunder', 2, { fire: 0, thunder: 1, earth: 0 }, 'Deal 22 damage to one enemy.', 'sparkHit', { kind: 'damage', amount: CONFIG.damage.common }),
-          makeCard(`${ownerPrefix}-c12`, 'Root Jab+', 'COMMON', 'earth', 2, { fire: 0, thunder: 0, earth: 1 }, 'Deal 22 damage to one enemy.', 'earthHit', { kind: 'damage', amount: CONFIG.damage.common }),
+          makeCard({ id: 'atk_fire_common_punch', asset: 'cards.atk_fire_common_punch', name: 'Fire Jab', category: 'atk', cardClass: 'COMMON', element: 'fire', scope: 'common', cost: 2, requirement: { fire: 1, thunder: 0, earth: 0 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: 22 } }),
+          makeCard({ id: 'atk_thunder_common_punch', asset: 'cards.atk_thunder_common_punch', name: 'Bolt Jab', category: 'atk', cardClass: 'COMMON', element: 'thunder', scope: 'common', cost: 2, requirement: { fire: 0, thunder: 1, earth: 0 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
+          makeCard({ id: 'atk_earth_common_punch', asset: 'cards.atk_earth_common_punch', name: 'Root Jab', category: 'atk', cardClass: 'COMMON', element: 'earth', scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 1 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
+          makeCard({ id: 'atk_fire_beast_magmaPunch', asset: 'cards.atk_fire_beast_magmaPunch', name: 'Flame Burst', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 2, thunder: 0, earth: 0 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'fire' }),
+          makeCard({ id: 'atk_thunder_beast_boltBurst', asset: 'cards.atk_thunder_beast_boltBurst', name: 'Thunder Burst', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'thunder' }),
+          makeCard({ id: 'atk_earth_beast_rootBurst', asset: 'cards.atk_earth_beast_rootBurst', name: 'Earth Burst', category: 'atk', cardClass: 'TYPE', element: 'earth', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 0, earth: 2 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'earth' }),
+          makeCard({ id: 'sup_fire_common_shard', asset: 'cards.sup_fire_common_shard', name: 'Fire Shard', category: 'sup', cardClass: 'SHARD', element: 'fire', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Fire Energy.', effect: { kind: 'shard', energy: 'fire' } }),
+          makeCard({ id: 'sup_thunder_common_shard', asset: 'cards.sup_thunder_common_shard', name: 'Thunder Shard', category: 'sup', cardClass: 'SHARD', element: 'thunder', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', effect: { kind: 'shard', energy: 'thunder' } }),
+          makeCard({ id: 'sup_earth_common_shard', asset: 'cards.sup_earth_common_shard', name: 'Earth Shard', category: 'sup', cardClass: 'SHARD', element: 'earth', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', effect: { kind: 'shard', energy: 'earth' } }),
+          makeCard({ id: 'atk_neutral_common_raiKa', asset: 'cards.atk_neutral_common_raiKa', name: '雷火', category: 'atk', cardClass: 'COMMON', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 50, bonusText: 'F4/T4で+50ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 40 damage. Enhanced with shared field.', effect: { kind: 'damage', amount: 40 } }),
+          makeCard({ id: 'atk_fire_beast_megaFlame', asset: 'cards.atk_fire_beast_megaFlame', name: 'Mega Flame', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 80 damage. Consume Fire 3.', effect: { kind: 'damage', amount: 80 }, requiredAttackType: 'fire' }),
+          makeCard({ id: 'atk_thunder_beast_stormNova', asset: 'cards.atk_thunder_beast_stormNova', name: 'Storm Nova', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 30, bonusText: 'T5/F2で+30ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 45 damage. Enhance and consume Thunder 2.', effect: { kind: 'damage', amount: 45 }, requiredAttackType: 'thunder' }),
         ];
         return shuffle(set);
       }
@@ -311,7 +444,60 @@
       function isAttackTypeMatch(card, actor) {
         if (!card || !actor) return true;
         if (card.type !== 'TYPE') return true;
+        if (card.scope === 'common') return true;
+        if (card.scope && actor.type && card.scope !== actor.type) return false;
         return card.requiredAttackType === actor.attackType;
+      }
+
+      function getFieldEnergy() {
+        return {
+          fire: gameState.field.fire,
+          thunder: gameState.field.thunder,
+          earth: gameState.field.earth
+        };
+      }
+
+      function getEnergyShortageReason(requirement) {
+        const energy = getFieldEnergy();
+        if (energy.fire < (requirement.fire ?? 0)) return TEXT.reason.needFireShared;
+        if (energy.thunder < (requirement.thunder ?? 0)) return TEXT.reason.needThunderShared;
+        if (energy.earth < (requirement.earth ?? 0)) return TEXT.reason.needEarthShared;
+        return '';
+      }
+
+      function meetsEnergyRequirement(requirement = { fire: 0, thunder: 0, earth: 0 }) {
+        return !getEnergyShortageReason(requirement);
+      }
+
+      function canConsumeFieldEnergy(consume = { fire: 0, thunder: 0, earth: 0 }) {
+        const energy = getFieldEnergy();
+        return (
+          energy.fire >= (consume.fire ?? 0) &&
+          energy.thunder >= (consume.thunder ?? 0) &&
+          energy.earth >= (consume.earth ?? 0)
+        );
+      }
+
+      function isCardEnhanced(card) {
+        if (!card || !card.enhance) return false;
+        return meetsEnergyRequirement(card.enhance.condition);
+      }
+
+      function getCardFinalDamage(card) {
+        const base = card?.effect?.amount ?? 0;
+        if (!card || card.effect?.kind !== 'damage') return base;
+        if (!isCardEnhanced(card)) return base;
+        return base + (card.enhance?.bonusDamage ?? 0);
+      }
+
+      function consumeFieldEnergy(consume = { fire: 0, thunder: 0, earth: 0 }) {
+        ELEMENTS.forEach((element) => {
+          gameState.field[element] = clamp(
+            gameState.field[element] - (consume[element] ?? 0),
+            0,
+            CONFIG.energy.max
+          );
+        });
       }
 
       function getCardUsability(side, card, actor = null) {
@@ -329,17 +515,16 @@
           };
         }
 
-        for (const [element, need] of Object.entries(card.energyReq)) {
-          if (gameState.field[element] < need) {
-            return {
-              playable: false,
-              reason: formatText(TEXT.reason.needEnergy, {
-                element: capitalize(element),
-                have: gameState.field[element],
-                need
-              })
-            };
-          }
+        const requirementReason = getEnergyShortageReason(card.requirement);
+        if (requirementReason) {
+          return { playable: false, reason: requirementReason };
+        }
+
+        if (!canConsumeFieldEnergy(card.consume)) {
+          return {
+            playable: false,
+            reason: TEXT.reason.needConsumeEnergy
+          };
         }
 
         if (card.type === 'TYPE' && actor && !isAttackTypeMatch(card, actor)) {
@@ -429,7 +614,7 @@
         gameState.field[card.element] = clamp(
           gameState.field[card.element] + CONFIG.energy.convertGain,
           0,
-          gameState.field.maxEnergy
+          CONFIG.energy.max
         );
         appendLog(formatText(TEXT.msg.convertEnergy, {
           gain: CONFIG.energy.convertGain,
@@ -453,7 +638,9 @@
         spendCardCost(side, card);
 
         if (card.effect.kind === 'damage') {
-          const ok = dealDamage(getOpponentSide(side), targetId, card.effect.amount);
+          const enhanced = isCardEnhanced(card);
+          const finalDamage = getCardFinalDamage(card);
+          const ok = dealDamage(getOpponentSide(side), targetId, finalDamage);
           if (!ok) return false;
 
           appendLog(formatText(TEXT.msg.cardUsedDamage, {
@@ -461,8 +648,15 @@
             card: card.name,
             actor: actorId,
             target: targetId,
-            amount: card.effect.amount,
+            amount: finalDamage,
           }));
+          if (enhanced) {
+            appendLog(formatText(TEXT.msg.cardEnhanced, { card: card.name }));
+            appendLog(formatText(TEXT.msg.cardEnhancedBonus, {
+              card: card.name,
+              bonus: card.enhance?.bonusDamage ?? 0
+            }));
+          }
         }
 
         if (card.effect.kind === 'shard') {
@@ -475,7 +669,7 @@
           gameState.field[card.effect.energy] = clamp(
             gameState.field[card.effect.energy] + CONFIG.energy.shardGain,
             0,
-            gameState.field.maxEnergy
+            CONFIG.energy.max
           );
 
           appendLog(formatText(TEXT.msg.cardUsedShard, {
@@ -485,6 +679,19 @@
             target: targetId,
             energy: capitalize(card.effect.energy),
           }));
+        }
+
+        if (canConsumeFieldEnergy(card.consume)) {
+          consumeFieldEnergy(card.consume);
+          const consumeParts = ELEMENTS
+            .filter((element) => (card.consume?.[element] ?? 0) > 0)
+            .map((element) => `${capitalize(element)} ${card.consume[element]}`);
+          if (consumeParts.length > 0) {
+            appendLog(formatText(TEXT.msg.cardConsume, {
+              card: card.name,
+              detail: consumeParts.join(', ')
+            }));
+          }
         }
 
         return true;
@@ -510,6 +717,8 @@
         resetMonstersActionState(side);
         clearSelection();
         gameState.temp.gutsSelectedCardIds = [];
+        if (side === 'enemy') setEnemyMessage('カードを引くぜ！');
+        else setEnemyMessage(TEXT.state.enemyIdleMessage);
         runDrawPhase(side);
       }
 
@@ -519,6 +728,7 @@
         gameState.turnPhase = 'attack';
         appendLog(formatText(TEXT.msg.attackStart, { side: capitalize(side) }));
         if (side === 'enemy') {
+          setEnemyMessage('攻撃するぜ！');
           gameState.enemyActionTimer = performance.now() + 450;
         }
       }
@@ -529,6 +739,7 @@
       }
 
       function runEnemyGutsPhase() {
+        setEnemyMessage('宵越しのカードは残さないよ！');
         const enemyCardIds = gameState.enemy.hand.map((card) => card.id);
         applyGutsConversion('enemy', enemyCardIds);
         finishTurn();
@@ -667,6 +878,11 @@
 
       function runEnemyAttackStep() {
         if (gameState.turnSide !== 'enemy' || gameState.turnPhase !== 'attack') return;
+        if (gameState.enemy.monsters.filter((m) => m.alive).length <= 1) {
+          setEnemyMessage('ピンチだぜぃ！');
+        } else {
+          setEnemyMessage('攻撃するぜ！');
+        }
 
         const playable = gameState.enemy.hand.filter((card) => getCardUsability('enemy', card).playable);
 
@@ -787,22 +1003,6 @@
         checkWinCondition();
       }
 
-      function createImageRef(key, src) {
-        const image = new Image();
-        const ref = { key, src, image, ok: false };
-        image.onload = () => { ref.ok = true; };
-        image.onerror = () => { ref.ok = false; };
-        image.src = src;
-        return ref;
-      }
-
-      function loadAssets() {
-        const list = Object.values(ASSETS).flatMap((group) => Object.entries(group));
-        list.forEach(([key, src]) => {
-          gameState.imageStore[key] = createImageRef(key, src);
-        });
-      }
-
       function drawPanel(x, y, width, height) {
         ctx.fillStyle = CONFIG.colors.panel;
         ctx.fillRect(x, y, width, height);
@@ -832,23 +1032,6 @@
           action,
           enabled
         });
-      }
-
-      function drawAssetOrFallback(key, x, y, w, h) {
-        const ref = gameState.imageStore[key];
-        if (ref && ref.ok) {
-          ctx.drawImage(ref.image, x, y, w, h);
-          return;
-        }
-
-        ctx.fillStyle = '#314d7f';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#6c8cd0';
-        ctx.strokeRect(x, y, w, h);
-        ctx.fillStyle = '#d6e4ff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(key, x + w / 2, y + h / 2 + 4);
       }
 
       function drawElementPill(element, x, y, value, max) {
@@ -923,7 +1106,7 @@
           ctx.strokeRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
         }
 
-        drawAssetOrFallback(monster.spriteKey, x + 12, y + 10, CONFIG.monsterCard.iconSize, CONFIG.monsterCard.iconSize);
+        drawAssetOrFallback(monster.asset, x + 12, y + 10, CONFIG.monsterCard.iconSize, CONFIG.monsterCard.iconSize, monster.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1004,7 +1187,7 @@
           ctx.fillText(card.name, x + 8, y + 20);
           ctx.font = '12px Arial';
           ctx.fillText(`${card.type} / C${card.cost}`, x + 8, y + 38);
-          ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, x + 8, y + 54);
+          ctx.fillText(`Req F${card.requirement.fire} T${card.requirement.thunder} E${card.requirement.earth}`, x + 8, y + 54);
         });
       }
 
@@ -1038,7 +1221,7 @@
           ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
         }
 
-        drawAssetOrFallback(card.spriteKey, dx + 10, dy + 8, width - 20, 70);
+        drawAssetOrFallback(card.asset, dx + 10, dy + 8, width - 20, 70, card.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1049,7 +1232,7 @@
           ? `${card.type}(${card.requiredAttackType})`
           : card.type;
         ctx.fillText(`${typeText} / Cost ${card.cost}`, dx + 8, dy + 108);
-        ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, dx + 8, dy + 124);
+        ctx.fillText(`Req F${card.requirement.fire} T${card.requirement.thunder} E${card.requirement.earth}`, dx + 8, dy + 124);
 
         if (!usability.playable && gameState.turnPhase === 'attack') {
           ctx.fillStyle = CONFIG.colors.cardDisabled;
@@ -1110,6 +1293,41 @@
         );
       }
 
+      function drawEnemyHeader() {
+        drawPanel(
+          CONFIG.enemyHeader.x,
+          CONFIG.enemyHeader.y,
+          CONFIG.enemyHeader.width,
+          CONFIG.enemyHeader.height
+        );
+
+        const iconX = CONFIG.enemyHeader.x + 10;
+        const iconY = CONFIG.enemyHeader.y + 7;
+        drawAssetOrFallback('monsters.enemy_beast_bear', iconX, iconY, CONFIG.enemyHeader.iconSize, CONFIG.enemyHeader.iconSize, 'enemy');
+
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(TEXT.panel.enemyHeaderTitle, iconX + CONFIG.enemyHeader.iconSize + 8, iconY + 12);
+
+        const messageX = CONFIG.enemyHeader.x + 170;
+        const msgLines = wrapText(gameState.ui.enemyMessage, 470).slice(0, 2);
+        ctx.font = '15px Arial';
+        msgLines.forEach((line, idx) => {
+          ctx.fillText(line, messageX, CONFIG.enemyHeader.y + 18 + idx * 16);
+        });
+
+        const infoX = CONFIG.enemyHeader.x + CONFIG.enemyHeader.width - 288;
+        const enemyDeckMax = gameState.enemy.deck.length + gameState.enemy.discard.length + gameState.enemy.hand.length;
+
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(`Hand ×${gameState.enemy.hand.length}   Guts ${gameState.enemy.guts}`, infoX, CONFIG.enemyHeader.y + 18);
+        ctx.font = '13px Arial';
+        ctx.fillStyle = '#d7e4ff';
+        ctx.fillText(`Deck ${gameState.enemy.deck.length} / ${enemyDeckMax}   Discard ${gameState.enemy.discard.length}`, infoX, CONFIG.enemyHeader.y + 34);
+      }
+
       function getSelectedCard() {
         return getCardFromHand(gameState.player, gameState.selectedCardId);
       }
@@ -1156,6 +1374,11 @@
         } else {
           const selectedActor = getMonster(gameState.player, gameState.selectedActorId);
           const usability = getCardUsability('player', card, selectedActor);
+          const enhanced = isCardEnhanced(card);
+          const baseDamage = card.effect.kind === 'damage' ? card.effect.amount : 0;
+          const enhanceCondition = card.enhance?.condition ?? { fire: 0, thunder: 0, earth: 0 };
+          const enhanceBonus = card.enhance?.bonusDamage ?? 0;
+          const consume = card.consume ?? { fire: 0, thunder: 0, earth: 0 };
 
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 18px Arial';
@@ -1170,7 +1393,17 @@
             y += 20;
           }
 
-          ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, CONFIG.contextPanel.x + 12, y);
+          ctx.fillText(`Base: ${baseDamage}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+          ctx.fillText(`Requirement: F${card.requirement.fire} / T${card.requirement.thunder} / E${card.requirement.earth}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+          ctx.fillText(`Enhance: F${enhanceCondition.fire} / T${enhanceCondition.thunder} / E${enhanceCondition.earth}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+          ctx.fillText(`Bonus: +${enhanceBonus}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+          ctx.fillText(`Consume: F${consume.fire} / T${consume.thunder} / E${consume.earth}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+          ctx.fillText(`Current: ${enhanced ? 'ENHANCED' : 'enhance inactive'}`, CONFIG.contextPanel.x + 12, y);
           y += 22;
 
           const lines = wrapText(card.description, CONFIG.contextPanel.width - 24);
@@ -1204,37 +1437,26 @@
         }
       }
 
-      function drawFieldPanel() {
+      function drawBattleInfoPanel() {
         drawPanel(CONFIG.fieldPanel.x, CONFIG.fieldPanel.y, CONFIG.fieldPanel.width, CONFIG.fieldPanel.height);
 
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(TEXT.panel.fieldTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
-        drawElementPill('fire', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 54, gameState.field.fire, gameState.field.maxEnergy);
-        drawElementPill('thunder', CONFIG.fieldPanel.x + 122, CONFIG.fieldPanel.y + 54, gameState.field.thunder, gameState.field.maxEnergy);
-        drawElementPill('earth', CONFIG.fieldPanel.x + 232, CONFIG.fieldPanel.y + 54, gameState.field.earth, gameState.field.maxEnergy);
+        ctx.fillText(TEXT.panel.battleInfoTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
 
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText('Guts変換: Gutsフェーズで選択した手札はEnd Turn時に変換', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 102);
-        ctx.font = '15px Arial';
-        ctx.fillStyle = '#d7e4ff';
-        ctx.fillText('1枚ごとに +1 Guts / +1 対応属性(F/T/E)', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 126);
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText(`Player Guts ${gameState.player.guts} / ${gameState.player.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 78);
 
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 17px Arial';
-        ctx.fillText(`Player Guts ${gameState.player.guts}/${gameState.player.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 164);
-        ctx.fillText(`Enemy Guts ${gameState.enemy.guts}/${gameState.enemy.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 190);
-
-        ctx.fillStyle = '#d7e4ff';
-        ctx.font = '15px Arial';
-        ctx.fillText(`Player Deck ${gameState.player.deck.length} / Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 218);
-        ctx.fillText(`Enemy Deck ${gameState.enemy.deck.length} / Discard ${gameState.enemy.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 240);
+        drawElementPill('fire', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 98, gameState.field.fire, CONFIG.energy.max);
+        drawElementPill('thunder', CONFIG.fieldPanel.x + 122, CONFIG.fieldPanel.y + 98, gameState.field.thunder, CONFIG.energy.max);
+        drawElementPill('earth', CONFIG.fieldPanel.x + 232, CONFIG.fieldPanel.y + 98, gameState.field.earth, CONFIG.energy.max);
 
         ctx.fillStyle = CONFIG.colors.muted;
-        ctx.font = '13px Arial';
-        ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 262);
+        ctx.font = '14px Arial';
+        const playerDeckMax = gameState.player.deck.length + gameState.player.discard.length + gameState.player.hand.length;
+        ctx.fillText(`Deck ${gameState.player.deck.length} / ${playerDeckMax}   Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 148);
       }
 
 function drawLogOverlay() {
@@ -1284,12 +1506,13 @@ function drawLogOverlay() {
 
         gameState.uiRects = { playerCards: [], monsters: [], buttons: [] };
 
+        drawEnemyHeader();
         drawEnemyHandArea();
         drawBattleArea();
         drawMiddleBand();
         drawPlayerHandArea();
         drawContextPanel();
-        drawFieldPanel();
+        drawBattleInfoPanel();
         drawLogOverlay();
       }
 
@@ -1355,23 +1578,25 @@ function drawLogOverlay() {
         gameState.log = [];
         gameState.winner = null;
         gameState.ui.showLogOverlay = false;
+        gameState.ui.enemyMessage = TEXT.state.enemyIdleMessage;
+        gameState.assets.refs = {};
+        gameState.assets.warnedMissing = {};
         gameState.hoveredCardId = null;
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
         gameState.field = {
           fire: CONFIG.energy.start,
           thunder: CONFIG.energy.start,
-          earth: CONFIG.energy.start,
-          maxEnergy: CONFIG.energy.max
+          earth: CONFIG.energy.start
         };
 
         gameState.player = {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
           monsters: [
-            makeMonster('p1', 'Ember Cub', 'fire', 'ember'),
-            makeMonster('p2', 'Bolt Pup', 'thunder', 'spark'),
-            makeMonster('p3', 'Root Pal', 'earth', 'moss'),
+            makeMonster('p1', 'Ember Cub', 'fire', 'beast', 'monsters.beast_bear'),
+            makeMonster('p2', 'Bolt Pup', 'thunder', 'beast', 'monsters.thunder_wolf'),
+            makeMonster('p3', 'Root Pal', 'earth', 'beast', 'monsters.earth_turtle'),
           ],
           hand: [],
           deck: createDeck('p'),
@@ -1382,9 +1607,9 @@ function drawLogOverlay() {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
           monsters: [
-            makeMonster('e1', 'Raider Ember', 'fire', 'enemyEmber'),
-            makeMonster('e2', 'Raider Bolt', 'thunder', 'enemySpark'),
-            makeMonster('e3', 'Raider Root', 'earth', 'enemyMoss'),
+            makeMonster('e1', 'Raider Ember', 'fire', 'beast', 'monsters.enemy_beast_bear'),
+            makeMonster('e2', 'Raider Bolt', 'thunder', 'beast', 'monsters.enemy_thunder_wolf'),
+            makeMonster('e3', 'Raider Root', 'earth', 'beast', 'monsters.enemy_earth_turtle'),
           ],
           hand: [],
           deck: createDeck('e'),
@@ -1404,7 +1629,6 @@ function drawLogOverlay() {
       }
 
       function boot() {
-        loadAssets();
         canvas.addEventListener('click', onCanvasClick);
         canvas.addEventListener('mousemove', onMouseMove);
         canvas.addEventListener('wheel', onWheel, { passive: false });
