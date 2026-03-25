@@ -32,71 +32,96 @@
       canvas: { width: 1200, height: 720 },
       teamSize: 3,
       handSize: 5,
-      maxLogEntries: 120,
-      maxVisibleLog: 8,
-      maxVisibleDetailLines: 6,
+      maxLogEntries: 140,
+      maxVisibleLog: 16,
+      maxVisibleDetailLines: 10,
       MAX_ACTIONS_PER_TURN: 3,
       hp: { base: 100 },
       guts: { start: 2, max: 12, convertGain: 1 },
       drawGutsRecover: { 3: 1, 2: 2, 1: 3, 0: 0 },
-      energy: { start: 1, max: 10, shardGain: 1 },
+      energy: { start: 1, max: 10, shardGain: 1, convertGain: 1 },
       damage: { common: 22, type: 30 },
-      turnBanner: { x: 290, y: 10, width: 420, height: 54 },
+      turnBanner: { x: 280, y: 10, width: 440, height: 54 },
       enemyHandArea: { x: 24, y: 70, width: 760, height: 82 },
-      monsterArea: { x: 24, y: 160, width: 760, height: 328 },
-      playerHandArea: { x: 24, y: 496, width: 760, height: 200 },
-      detailPanel: { x: 800, y: 70, width: 376, height: 210 },
-      resourcePanel: { x: 800, y: 288, width: 376, height: 190 },
-      logPanel: { x: 800, y: 486, width: 376, height: 210 },
-      monsterCard: { width: 236, height: 152, gap: 12, iconSize: 62, hpBarWidth: 126, hpBarHeight: 12 },
-      handCard: { width: 142, height: 182, gap: 10 },
+      monsterArea: { x: 24, y: 160, width: 760, height: 306 },
+      playerHandArea: { x: 24, y: 472, width: 760, height: 194 },
+      actionBar: { x: 24, y: 670, width: 760, height: 42 },
+      contextPanel: { x: 800, y: 70, width: 376, height: 360 },
+      fieldPanel: { x: 800, y: 438, width: 376, height: 274 },
+      monsterCard: { width: 236, height: 140, gap: 12, iconSize: 60, hpBarWidth: 126, hpBarHeight: 12 },
+      handCard: { width: 142, height: 146, gap: 10 },
       enemyHandCard: { width: 140, height: 64, gap: 8 },
-      button: { width: 136, height: 38, gap: 10 },
+      button: { width: 132, height: 32, gap: 10 },
+      logOverlay: { x: 130, y: 80, width: 940, height: 560 },
       colors: {
-        bg: '#1f3564',
-        panel: '#243f72',
-        panelDark: '#1b2f54',
-        border: '#4569ad',
-        text: '#f4f7ff',
-        muted: '#9db0d8',
-        hp: '#62e57a',
-        hpBack: '#243948',
-        fire: '#f05a43',
-        thunder: '#f9c744',
-        earth: '#6ccf70',
-        dead: 'rgba(26, 34, 54, 0.82)',
-        actorSoft: 'rgba(120, 188, 255, 0.35)',
-        actorStrong: '#7cc8ff',
-        targetSoft: 'rgba(255, 101, 101, 0.33)',
-        targetStrong: '#ff6a6a',
-        playableGlow: 'rgba(255, 231, 114, 0.7)',
-        cardDisabled: 'rgba(44, 52, 72, 0.62)',
-        button: '#315899',
-        buttonOff: '#24406d',
+        bg: '#1f3564', panel: '#243f72', border: '#4569ad', text: '#f4f7ff', muted: '#9db0d8',
+        hp: '#62e57a', hpBack: '#243948', fire: '#f05a43', thunder: '#f9c744', earth: '#6ccf70',
+        dead: 'rgba(30, 34, 48, 0.68)', actorSoft: 'rgba(120, 188, 255, 0.28)', actorStrong: '#7cc8ff',
+        targetSoft: 'rgba(255, 101, 101, 0.3)', targetStrong: '#ff6a6a', playableGlow: 'rgba(255, 231, 114, 0.7)',
+        cardDisabled: 'rgba(30, 38, 59, 0.72)', button: '#315899', buttonOff: '#243f68', overlay: 'rgba(9, 16, 30, 0.73)',
+      },
+    };
+
+    const TEXT = {
+      turn: {
+        playerAttack: 'PLAYER TURN / ATTACK PHASE',
+        playerGuts: 'PLAYER TURN / GUTS PHASE',
+        enemy: 'ENEMY TURN',
+      },
+      button: {
+        cancel: 'Cancel',
+        convert: 'Convert',
+        endAttack: 'End Attack',
+        finishTurn: 'End Turn',
+        log: 'Log',
+        closeLog: 'Close Log',
+      },
+      panel: {
+        enemyHand: 'Enemy Hand (Visible)',
+        playerHand: 'Player Hand',
+        contextTitle: 'Context / Detail',
+        fieldTitle: 'Field Resources',
+        logTitle: 'Battle Log',
+      },
+      msg: {
+        battleStart: 'Battle started.',
+        drawRecover: '{side} recovered +{gain} Guts in draw phase.',
+        attackStart: '{side} attack phase started.',
+        enemyConvert: 'Enemy converted {n} cards in guts phase (+{n} Guts).',
+        playerConvert: 'Player converted {n} cards in guts phase (+{n} Guts).',
+        convertEnergy: '{side} gained +{gain} {element} energy from conversion.',
+        selectCard: '{card} selected. Choose actor.',
+        selectActor: 'Actor selected. Choose target.',
+        cancelSelection: 'Selection canceled.',
+        invalidCard: 'Card is not playable: {reason}',
+        invalidTarget: 'Invalid target.',
+        cardUsedDamage: '{side} used {card} with {actor} on {target} for {amount}.',
+        cardUsedShard: '{side} used {card} ({actor} -> {target}) for +1 Guts / +1 {energy} Energy.',
+        defeated: '{name} was defeated.',
+        win: '{side} wins.',
+      },
+      reason: {
+        noCard: 'No card selected.',
+        shardAlways: 'SHARD is always playable.',
+        needGuts: 'Not enough Guts ({have}/{need}).',
+        needEnergy: 'Not enough {element} energy ({have}/{need}).',
+        needActor: 'Select a living actor monster.',
+        needTarget: 'Select a valid target monster.',
+        waitAttackPhase: 'Card can be used only in attack phase.',
+      },
+      state: {
+        none: 'none',
       },
     };
 
     const ASSETS = {
       monsters: {
-        ember: '/assets/monsters/ember.png',
-        spark: '/assets/monsters/spark.png',
-        moss: '/assets/monsters/moss.png',
-        enemyEmber: '/assets/monsters/enemy_ember.png',
-        enemySpark: '/assets/monsters/enemy_spark.png',
-        enemyMoss: '/assets/monsters/enemy_moss.png',
+        ember: '/assets/monsters/ember.png', spark: '/assets/monsters/spark.png', moss: '/assets/monsters/moss.png',
+        enemyEmber: '/assets/monsters/enemy_ember.png', enemySpark: '/assets/monsters/enemy_spark.png', enemyMoss: '/assets/monsters/enemy_moss.png',
       },
       cards: {
-        flameHit: '/assets/cards/flame_hit.png',
-        sparkHit: '/assets/cards/spark_hit.png',
-        earthHit: '/assets/cards/earth_hit.png',
-        fireShard: '/assets/cards/fire_shard.png',
-        thunderShard: '/assets/cards/thunder_shard.png',
-        earthShard: '/assets/cards/earth_shard.png',
-      },
-      icons: {
-        fire: '/assets/icons/fire.png',
-        thunder: '/assets/icons/thunder.png',
-        earth: '/assets/icons/earth.png',
+        flameHit: '/assets/cards/flame_hit.png', sparkHit: '/assets/cards/spark_hit.png', earthHit: '/assets/cards/earth_hit.png',
+        fireShard: '/assets/cards/fire_shard.png', thunderShard: '/assets/cards/thunder_shard.png', earthShard: '/assets/cards/earth_shard.png',
       },
     };
 
@@ -118,27 +143,22 @@
       enemyActionsDone: 0,
       inputQueue: [],
       imageStore: {},
-      uiRects: { playerCards: [], enemyCards: [], monsters: [], buttons: [] },
+      ui: { showLogOverlay: false, invalidReason: TEXT.state.none },
+      uiRects: { playerCards: [], monsters: [], buttons: [] },
       temp: { gutsSelectedCardIds: [] },
       player: {
         guts: CONFIG.guts.start,
         maxGuts: CONFIG.guts.max,
         energy: { fire: CONFIG.energy.start, thunder: CONFIG.energy.start, earth: CONFIG.energy.start },
         maxEnergy: CONFIG.energy.max,
-        monsters: [],
-        hand: [],
-        deck: [],
-        discard: [],
+        monsters: [], hand: [], deck: [], discard: [],
       },
       enemy: {
         guts: CONFIG.guts.start,
         maxGuts: CONFIG.guts.max,
         energy: { fire: CONFIG.energy.start, thunder: CONFIG.energy.start, earth: CONFIG.energy.start },
         maxEnergy: CONFIG.energy.max,
-        monsters: [],
-        hand: [],
-        deck: [],
-        discard: [],
+        monsters: [], hand: [], deck: [], discard: [],
       },
       log: [],
     };
@@ -147,6 +167,7 @@
     function capitalize(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
     function getRandomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
     function getElementColor(element) { return CONFIG.colors[element] || '#fff'; }
+    function formatText(template, values) { return Object.entries(values).reduce((t, [k, v]) => t.replaceAll(`{${k}}`, `${v}`), template); }
 
     function appendLog(message) {
       gameState.log.push(message);
@@ -188,27 +209,28 @@
       return clone;
     }
 
-    function getLivingMonsters(sideData) {
-      return sideData.monsters.filter((monster) => monster.alive);
-    }
-
     function getSideData(side) { return side === 'player' ? gameState.player : gameState.enemy; }
     function getOpponentSide(side) { return side === 'player' ? 'enemy' : 'player'; }
+    function getLivingMonsters(sideData) { return sideData.monsters.filter((monster) => monster.alive); }
+    function getCardFromHand(sideData, cardId) { return sideData.hand.find((card) => card.id === cardId) || null; }
+    function getMonster(sideData, monsterId) { return sideData.monsters.find((monster) => monster.id === monsterId) || null; }
 
-    function getMonster(sideData, monsterId) {
-      return sideData.monsters.find((monster) => monster.id === monsterId) || null;
-    }
-
-    function getCardFromHand(sideData, cardId) {
-      return sideData.hand.find((card) => card.id === cardId) || null;
-    }
-
-    function canPlayCard(side, card) {
+    function getCardUsability(side, card) {
       const sideData = getSideData(side);
-      if (!card) return false;
-      if (card.type === 'SHARD') return true;
-      if (sideData.guts < card.cost) return false;
-      return Object.entries(card.energyReq).every(([element, need]) => sideData.energy[element] >= need);
+      if (!card) return { playable: false, reason: TEXT.reason.noCard };
+      if (card.type === 'SHARD') return { playable: true, reason: TEXT.reason.shardAlways };
+      if (sideData.guts < card.cost) {
+        return { playable: false, reason: formatText(TEXT.reason.needGuts, { have: sideData.guts, need: card.cost }) };
+      }
+      for (const [element, need] of Object.entries(card.energyReq)) {
+        if (sideData.energy[element] < need) {
+          return {
+            playable: false,
+            reason: formatText(TEXT.reason.needEnergy, { element: capitalize(element), have: sideData.energy[element], need }),
+          };
+        }
+      }
+      return { playable: true, reason: '' };
     }
 
     function getValidActorIds(side) {
@@ -240,7 +262,7 @@
       const aliveCount = getLivingMonsters(sideData).length;
       const gain = CONFIG.drawGutsRecover[aliveCount];
       sideData.guts = clamp(sideData.guts + gain, 0, sideData.maxGuts);
-      appendLog(`${capitalize(side)} recovered +${gain} Guts in draw phase.`);
+      appendLog(formatText(TEXT.msg.drawRecover, { side: capitalize(side), gain }));
     }
 
     function moveCardToDiscard(side, cardId) {
@@ -252,13 +274,29 @@
       return card;
     }
 
+    function gainResourcesFromConversion(side, card) {
+      if (!card) return;
+      const sideData = getSideData(side);
+      sideData.guts = clamp(sideData.guts + CONFIG.guts.convertGain, 0, sideData.maxGuts);
+      sideData.energy[card.element] = clamp(
+        sideData.energy[card.element] + CONFIG.energy.convertGain,
+        0,
+        sideData.maxEnergy
+      );
+      appendLog(formatText(TEXT.msg.convertEnergy, {
+        side: capitalize(side),
+        gain: CONFIG.energy.convertGain,
+        element: capitalize(card.element),
+      }));
+    }
+
     function dealDamage(targetSide, targetId, amount) {
       const target = getMonster(getSideData(targetSide), targetId);
       if (!target || !target.alive) return false;
       target.hp = clamp(target.hp - amount, 0, target.maxHp);
       if (target.hp === 0) {
         target.alive = false;
-        appendLog(`${target.name} was defeated.`);
+        appendLog(formatText(TEXT.msg.defeated, { name: target.name }));
       }
       return true;
     }
@@ -267,30 +305,40 @@
       if (card.effect.kind === 'damage') {
         const ok = dealDamage(getOpponentSide(side), targetId, card.effect.amount);
         if (!ok) return false;
-        appendLog(`${capitalize(side)} used ${card.name} with ${actorId} on ${targetId} for ${card.effect.amount}.`);
+        appendLog(formatText(TEXT.msg.cardUsedDamage, {
+          side: capitalize(side), card: card.name, actor: actorId, target: targetId, amount: card.effect.amount,
+        }));
       }
       if (card.effect.kind === 'shard') {
         const sideData = getSideData(side);
         sideData.guts = clamp(sideData.guts + CONFIG.energy.shardGain, 0, sideData.maxGuts);
         sideData.energy[card.effect.energy] = clamp(sideData.energy[card.effect.energy] + CONFIG.energy.shardGain, 0, sideData.maxEnergy);
-        appendLog(`${capitalize(side)} used ${card.name} (${actorId} -> ${targetId}) for +1 Guts / +1 ${capitalize(card.effect.energy)} Energy.`);
+        appendLog(formatText(TEXT.msg.cardUsedShard, {
+          side: capitalize(side), card: card.name, actor: actorId, target: targetId, energy: capitalize(card.effect.energy),
+        }));
       }
       spendCardCost(side, card);
       return true;
     }
 
-    function resetSelections() {
+    function clearSelection() {
       gameState.selectedCardId = null;
       gameState.selectedActorId = null;
       gameState.selectedTargetId = null;
       gameState.selectionStep = 'none';
+      gameState.ui.invalidReason = TEXT.state.none;
+    }
+
+    function cancelSelection(reasonText) {
+      clearSelection();
+      if (reasonText) appendLog(reasonText);
     }
 
     function startTurn(side) {
       gameState.turnSide = side;
       gameState.turnPhase = 'draw';
       gameState.enemyActionsDone = 0;
-      resetSelections();
+      clearSelection();
       gameState.temp.gutsSelectedCardIds = [];
       runDrawPhase(side);
     }
@@ -299,7 +347,7 @@
       drawUntilHandLimit(side);
       recoverDrawPhaseGuts(side);
       gameState.turnPhase = 'attack';
-      appendLog(`${capitalize(side)} attack phase started.`);
+      appendLog(formatText(TEXT.msg.attackStart, { side: capitalize(side) }));
       if (side === 'enemy') gameState.enemyActionTimer = performance.now() + 450;
     }
 
@@ -314,9 +362,9 @@
       while (enemy.hand.length > 0) {
         const card = enemy.hand.pop();
         enemy.discard.push(card);
+        gainResourcesFromConversion('enemy', card);
       }
-      enemy.guts = clamp(enemy.guts + converted * CONFIG.guts.convertGain, 0, enemy.maxGuts);
-      appendLog(`Enemy converted ${converted} cards in guts phase (+${converted} Guts).`);
+      appendLog(formatText(TEXT.msg.enemyConvert, { n: converted }));
       finishTurn();
     }
 
@@ -326,15 +374,7 @@
       if (playerAlive === 0 || enemyAlive === 0) {
         gameState.phase = 'gameover';
         gameState.winner = enemyAlive === 0 ? 'player' : 'enemy';
-        appendLog(`${capitalize(gameState.winner)} wins.`);
-      }
-    }
-
-    function beginPlayerCardSelection(cardId) {
-      const card = getCardFromHand(gameState.player, cardId);
-      if (!card || !canPlayCard('player', card)) {
-        appendLog('Card is not playable right now.');
-        return;
+        appendLog(formatText(TEXT.msg.win, { side: capitalize(gameState.winner) }));
       }
       gameState.selectedCardId = cardId;
       gameState.selectionStep = 'selectActor';
@@ -343,36 +383,66 @@
       appendLog(`Selected ${card.name}. Choose actor.`);
     }
 
+    function beginPlayerCardSelection(cardId) {
+      if (gameState.turnPhase !== 'attack') {
+        gameState.ui.invalidReason = TEXT.reason.waitAttackPhase;
+        appendLog(formatText(TEXT.msg.invalidCard, { reason: TEXT.reason.waitAttackPhase }));
+        return;
+      }
+      if (gameState.selectedCardId === cardId) {
+        cancelSelection(TEXT.msg.cancelSelection);
+        return;
+      }
+      const card = getCardFromHand(gameState.player, cardId);
+      const usability = getCardUsability('player', card);
+      if (!usability.playable) {
+        gameState.ui.invalidReason = usability.reason;
+        appendLog(formatText(TEXT.msg.invalidCard, { reason: usability.reason }));
+        clearSelection();
+        return;
+      }
+      gameState.selectedCardId = cardId;
+      gameState.selectionStep = 'selectActor';
+      gameState.selectedActorId = null;
+      gameState.selectedTargetId = null;
+      gameState.ui.invalidReason = TEXT.state.none;
+      appendLog(formatText(TEXT.msg.selectCard, { card: card.name }));
+    }
+
     function trySelectActor(monsterId) {
       if (gameState.selectionStep !== 'selectActor') return;
-      if (!getValidActorIds('player').includes(monsterId)) return;
+      if (!getValidActorIds('player').includes(monsterId)) {
+        gameState.ui.invalidReason = TEXT.reason.needActor;
+        return;
+      }
       gameState.selectedActorId = monsterId;
       gameState.selectionStep = 'selectTarget';
-      appendLog('Actor selected. Choose target.');
+      appendLog(TEXT.msg.selectActor);
     }
 
     function trySelectTargetAndResolve(monsterId) {
       if (gameState.selectionStep !== 'selectTarget') return;
       const card = getCardFromHand(gameState.player, gameState.selectedCardId);
-      if (!card) return;
-      if (!getValidTargetIds('player', card).includes(monsterId)) return;
+      if (!card) {
+        clearSelection();
+        return;
+      }
+      if (!getValidTargetIds('player', card).includes(monsterId)) {
+        gameState.ui.invalidReason = TEXT.reason.needTarget;
+        appendLog(TEXT.msg.invalidTarget);
+        return;
+      }
       gameState.selectedTargetId = monsterId;
       const applied = applyCard('player', card, gameState.selectedActorId, gameState.selectedTargetId);
-      if (applied) {
-        moveCardToDiscard('player', card.id);
-      }
-      resetSelections();
+      if (applied) moveCardToDiscard('player', card.id);
+      clearSelection();
       checkWinCondition();
     }
 
     function endPlayerAttackPhase() {
-      if (gameState.selectionStep !== 'none') {
-        appendLog('Finish current card selection first.');
-        return;
-      }
       gameState.turnPhase = 'guts';
       gameState.temp.gutsSelectedCardIds = [];
-      appendLog('Player guts phase started. Select hand cards to convert.');
+      clearSelection();
     }
 
     function togglePlayerGutsCard(cardId) {
@@ -389,11 +459,13 @@
       let converted = 0;
       selectedIds.forEach((cardId) => {
         const moved = moveCardToDiscard('player', cardId);
-        if (moved) converted += 1;
+        if (moved) {
+          converted += 1;
+          gainResourcesFromConversion('player', moved);
+        }
       });
-      gameState.player.guts = clamp(gameState.player.guts + converted * CONFIG.guts.convertGain, 0, gameState.player.maxGuts);
       gameState.temp.gutsSelectedCardIds = [];
-      appendLog(`Player converted ${converted} cards in guts phase (+${converted} Guts).`);
+      appendLog(formatText(TEXT.msg.playerConvert, { n: converted }));
     }
 
     function finishPlayerGutsPhase() {
@@ -403,7 +475,7 @@
 
     function runEnemyAttackStep() {
       if (gameState.turnSide !== 'enemy' || gameState.turnPhase !== 'attack') return;
-      const playable = gameState.enemy.hand.filter((card) => canPlayCard('enemy', card));
+      const playable = gameState.enemy.hand.filter((card) => getCardUsability('enemy', card).playable);
       if (playable.length === 0 || gameState.enemyActionsDone >= CONFIG.MAX_ACTIONS_PER_TURN) {
         gameState.turnPhase = 'guts';
         runEnemyGutsPhase();
@@ -425,15 +497,32 @@
       checkWinCondition();
     }
 
+    function onActionButton(action) {
+      if (action === 'toggleLog') {
+        gameState.ui.showLogOverlay = !gameState.ui.showLogOverlay;
+        return;
+      }
+      if (action === 'closeLog') {
+        gameState.ui.showLogOverlay = false;
+        return;
+      }
+      if (gameState.turnSide !== 'player') return;
+      if (action === 'cancel') {
+        cancelSelection(TEXT.msg.cancelSelection);
+        gameState.temp.gutsSelectedCardIds = [];
+      }
+      if (action === 'convert' && gameState.turnPhase === 'guts') convertSelectedPlayerCards();
+      if (action === 'endAttack' && gameState.turnPhase === 'attack') endPlayerAttackPhase();
+      if (action === 'endTurn' && gameState.turnPhase === 'guts') finishPlayerGutsPhase();
+    }
+
     function handleCanvasClick(x, y) {
       const buttonHit = getHitRect(gameState.uiRects.buttons, x, y);
       if (buttonHit) {
-        const { action } = buttonHit;
-        if (action === 'endAttack') endPlayerAttackPhase();
-        if (action === 'convertGuts') convertSelectedPlayerCards();
-        if (action === 'finishGuts') finishPlayerGutsPhase();
+        onActionButton(buttonHit.action);
         return;
       }
+      if (gameState.ui.showLogOverlay) return;
 
       const monsterHit = getHitRect(gameState.uiRects.monsters, x, y);
       if (monsterHit && gameState.turnSide === 'player' && gameState.turnPhase === 'attack') {
@@ -450,28 +539,30 @@
 
     function update() {
       if (gameState.phase !== 'playing') return;
-
       while (gameState.inputQueue.length > 0) {
         const event = gameState.inputQueue.shift();
         if (event.type === 'click') handleCanvasClick(event.x, event.y);
       }
-
       if (gameState.turnSide === 'enemy' && gameState.turnPhase === 'attack' && performance.now() >= gameState.enemyActionTimer) {
         gameState.enemyActionTimer = performance.now() + 700;
         runEnemyAttackStep();
       }
-
       checkWinCondition();
+    }
+
+    function createImageRef(key, src) {
+      const image = new Image();
+      const ref = { key, src, image, ok: false };
+      image.onload = () => { ref.ok = true; };
+      image.onerror = () => { ref.ok = false; };
+      image.src = src;
+      return ref;
     }
 
     function loadAssets() {
       const list = Object.values(ASSETS).flatMap((group) => Object.entries(group));
       list.forEach(([key, src]) => {
-        const image = new Image();
-        gameState.imageStore[key] = { image, ok: false, src };
-        image.onload = () => { gameState.imageStore[key].ok = true; };
-        image.onerror = () => { gameState.imageStore[key].ok = false; };
-        image.src = src;
+        gameState.imageStore[key] = createImageRef(key, src);
       });
     }
 
@@ -483,15 +574,15 @@
       ctx.strokeRect(x, y, width, height);
     }
 
-    function drawButton(x, y, text, action, enabled) {
+    function drawButton(x, y, label, action, enabled) {
       ctx.fillStyle = enabled ? CONFIG.colors.button : CONFIG.colors.buttonOff;
       ctx.fillRect(x, y, CONFIG.button.width, CONFIG.button.height);
-      ctx.strokeStyle = '#83a2db';
+      ctx.strokeStyle = '#82a3db';
       ctx.strokeRect(x, y, CONFIG.button.width, CONFIG.button.height);
       ctx.fillStyle = enabled ? '#fff' : '#9fb4dd';
       ctx.textAlign = 'center';
-      ctx.font = 'bold 15px Arial';
-      ctx.fillText(text, x + CONFIG.button.width / 2, y + 24);
+      ctx.font = 'bold 14px Arial';
+      ctx.fillText(label, x + CONFIG.button.width / 2, y + 21);
       gameState.uiRects.buttons.push({ x, y, w: CONFIG.button.width, h: CONFIG.button.height, action, enabled });
     }
 
@@ -509,51 +600,57 @@
         ctx.textAlign = 'center';
         ctx.fillText(key, x + w / 2, y + h / 2 + 4);
       }
+      ctx.fillStyle = '#314d7f';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#6c8cd0';
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = '#d6e4ff';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(key, x + w / 2, y + h / 2 + 4);
     }
 
-    function drawElementIcon(element, x, y, size) {
+    function drawElementPill(element, x, y, value, max) {
       ctx.fillStyle = getElementColor(element);
-      ctx.beginPath();
-      ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#1c1c1c';
-      ctx.textAlign = 'center';
+      ctx.fillRect(x, y, 98, 20);
+      ctx.fillStyle = '#111';
       ctx.font = 'bold 12px Arial';
-      ctx.fillText(element.charAt(0).toUpperCase(), x + size / 2, y + size / 2 + 4);
+      ctx.textAlign = 'left';
+      ctx.fillText(`${capitalize(element)} ${value}/${max}`, x + 6, y + 14);
     }
 
     function drawTurnBanner() {
       drawPanel(CONFIG.turnBanner.x, CONFIG.turnBanner.y, CONFIG.turnBanner.width, CONFIG.turnBanner.height);
-      let text = 'PLAYER TURN / ATTACK PHASE';
+      let text = TEXT.turn.playerAttack;
       if (gameState.phase === 'gameover') text = `${capitalize(gameState.winner)} WINS`;
-      else if (gameState.turnSide === 'enemy') text = 'ENEMY TURN';
-      else if (gameState.turnPhase === 'guts') text = 'PLAYER TURN / GUTS PHASE';
+      else if (gameState.turnSide === 'enemy') text = TEXT.turn.enemy;
+      else if (gameState.turnPhase === 'guts') text = TEXT.turn.playerGuts;
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(text, CONFIG.turnBanner.x + CONFIG.turnBanner.width / 2, CONFIG.turnBanner.y + 35);
+      ctx.font = 'bold 25px Arial';
+      ctx.fillText(text, CONFIG.turnBanner.x + CONFIG.turnBanner.width / 2, CONFIG.turnBanner.y + 34);
     }
 
     function drawMonsterCard(monster, side, x, y) {
       drawPanel(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
-      const validActor = gameState.selectionStep === 'selectActor' && side === 'player' && getValidActorIds('player').includes(monster.id);
-      const selectedActor = gameState.selectedActorId === monster.id;
       const card = getCardFromHand(gameState.player, gameState.selectedCardId);
+      const validActor = gameState.selectionStep === 'selectActor' && side === 'player' && getValidActorIds('player').includes(monster.id);
       const validTarget = gameState.selectionStep === 'selectTarget' && side === 'enemy' && getValidTargetIds('player', card).includes(monster.id);
+      const selectedActor = gameState.selectedActorId === monster.id;
       const selectedTarget = gameState.selectedTargetId === monster.id;
 
       if (validActor) {
         ctx.fillStyle = CONFIG.colors.actorSoft;
         ctx.fillRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
       }
+      if (validTarget) {
+        ctx.fillStyle = CONFIG.colors.targetSoft;
+        ctx.fillRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
+      }
       if (selectedActor) {
         ctx.strokeStyle = CONFIG.colors.actorStrong;
         ctx.lineWidth = 4;
         ctx.strokeRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
-      }
-      if (validTarget) {
-        ctx.fillStyle = CONFIG.colors.targetSoft;
-        ctx.fillRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
       }
       if (selectedTarget) {
         ctx.strokeStyle = CONFIG.colors.targetStrong;
@@ -562,7 +659,6 @@
       }
 
       drawAssetOrFallback(monster.spriteKey, x + 12, y + 10, CONFIG.monsterCard.iconSize, CONFIG.monsterCard.iconSize);
-      drawElementIcon(monster.element, x + CONFIG.monsterCard.width - 34, y + 12, 22);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
       ctx.font = 'bold 16px Arial';
@@ -578,7 +674,6 @@
         ctx.fillStyle = CONFIG.colors.dead;
         ctx.fillRect(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
       }
-
       gameState.uiRects.monsters.push({ id: monster.id, side, x, y, w: CONFIG.monsterCard.width, h: CONFIG.monsterCard.height });
     }
 
@@ -586,22 +681,20 @@
       drawPanel(CONFIG.monsterArea.x, CONFIG.monsterArea.y, CONFIG.monsterArea.width, CONFIG.monsterArea.height);
       gameState.enemy.monsters.forEach((monster, index) => {
         const x = CONFIG.monsterArea.x + 10 + index * (CONFIG.monsterCard.width + CONFIG.monsterCard.gap);
-        const y = CONFIG.monsterArea.y + 8;
-        drawMonsterCard(monster, 'enemy', x, y);
+        drawMonsterCard(monster, 'enemy', x, CONFIG.monsterArea.y + 8);
       });
       gameState.player.monsters.forEach((monster, index) => {
         const x = CONFIG.monsterArea.x + 10 + index * (CONFIG.monsterCard.width + CONFIG.monsterCard.gap);
-        const y = CONFIG.monsterArea.y + 168;
-        drawMonsterCard(monster, 'player', x, y);
+        drawMonsterCard(monster, 'player', x, CONFIG.monsterArea.y + 156);
       });
     }
 
     function drawEnemyHandArea() {
       drawPanel(CONFIG.enemyHandArea.x, CONFIG.enemyHandArea.y, CONFIG.enemyHandArea.width, CONFIG.enemyHandArea.height);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 16px Arial';
+      ctx.font = 'bold 15px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText('Enemy Hand (Visible)', CONFIG.enemyHandArea.x + 10, CONFIG.enemyHandArea.y + 20);
+      ctx.fillText(TEXT.panel.enemyHand, CONFIG.enemyHandArea.x + 10, CONFIG.enemyHandArea.y + 20);
       gameState.enemy.hand.forEach((card, index) => {
         const x = CONFIG.enemyHandArea.x + 10 + index * (CONFIG.enemyHandCard.width + CONFIG.enemyHandCard.gap);
         const y = CONFIG.enemyHandArea.y + 26;
@@ -609,21 +702,19 @@
         ctx.fillRect(x, y, CONFIG.enemyHandCard.width, CONFIG.enemyHandCard.height);
         ctx.strokeStyle = '#6788cb';
         ctx.strokeRect(x, y, CONFIG.enemyHandCard.width, CONFIG.enemyHandCard.height);
-        drawElementIcon(card.element, x + 6, y + 6, 20);
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 13px Arial';
-        ctx.fillText(card.name, x + 30, y + 22);
+        ctx.fillText(card.name, x + 8, y + 20);
         ctx.font = '12px Arial';
-        ctx.fillText(`${card.type} / Cost ${card.cost}`, x + 30, y + 40);
-        ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, x + 8, y + 56);
-        gameState.uiRects.enemyCards.push({ id: card.id, x, y, w: CONFIG.enemyHandCard.width, h: CONFIG.enemyHandCard.height });
+        ctx.fillText(`${card.type} / C${card.cost}`, x + 8, y + 38);
+        ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, x + 8, y + 54);
       });
     }
 
     function drawPlayerCard(card, x, y, hover) {
-      const playable = canPlayCard('player', card);
+      const usability = getCardUsability('player', card);
       const selectedForGuts = gameState.temp.gutsSelectedCardIds.includes(card.id);
-      const scale = hover ? 1.05 : 1;
+      const scale = hover ? 1.04 : 1;
       const width = CONFIG.handCard.width * scale;
       const height = CONFIG.handCard.height * scale;
       const dx = x - (width - CONFIG.handCard.width) / 2;
@@ -634,20 +725,26 @@
         ctx.lineWidth = 3;
         ctx.strokeRect(dx + 1, dy + 1, width - 2, height - 2);
       }
-      if (selectedForGuts) {
-        ctx.strokeStyle = '#71ffb4';
+      if (gameState.selectedCardId === card.id) {
+        ctx.strokeStyle = '#ffe06d';
         ctx.lineWidth = 4;
         ctx.strokeRect(dx + 2, dy + 2, width - 4, height - 4);
       }
-      drawElementIcon(card.element, dx + 8, dy + 8, 24);
-      drawAssetOrFallback(card.spriteKey, dx + 10, dy + 36, width - 20, 92);
+      if (selectedForGuts) {
+        ctx.strokeStyle = '#71ffb4';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
+      }
+      drawAssetOrFallback(card.spriteKey, dx + 10, dy + 8, width - 20, 70);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
-      ctx.font = 'bold 14px Arial';
-      ctx.fillText(card.name, dx + 10, dy + 146);
-      ctx.font = '13px Arial';
-      ctx.fillText(`Cost ${card.cost} / ${card.type}`, dx + 10, dy + 166);
-      if (!playable && gameState.turnPhase === 'attack') {
+      ctx.font = 'bold 13px Arial';
+      ctx.fillText(card.name, dx + 8, dy + 92);
+      ctx.font = '12px Arial';
+      ctx.fillText(`${card.type} / Cost ${card.cost}`, dx + 8, dy + 108);
+      ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, dx + 8, dy + 124);
+
+      if (!usability.playable && gameState.turnPhase === 'attack') {
         ctx.fillStyle = CONFIG.colors.cardDisabled;
         ctx.fillRect(dx, dy, width, height);
       }
@@ -658,46 +755,110 @@
       drawPanel(CONFIG.playerHandArea.x, CONFIG.playerHandArea.y, CONFIG.playerHandArea.width, CONFIG.playerHandArea.height);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
-      ctx.font = 'bold 16px Arial';
-      ctx.fillText('Player Hand', CONFIG.playerHandArea.x + 10, CONFIG.playerHandArea.y + 20);
+      ctx.font = 'bold 15px Arial';
+      ctx.fillText(TEXT.panel.playerHand, CONFIG.playerHandArea.x + 10, CONFIG.playerHandArea.y + 20);
       gameState.player.hand.forEach((card, index) => {
         const x = CONFIG.playerHandArea.x + 10 + index * (CONFIG.handCard.width + CONFIG.handCard.gap);
-        const y = CONFIG.playerHandArea.y + 14;
-        drawPlayerCard(card, x, y, gameState.hoveredCardId === card.id);
+        drawPlayerCard(card, x, CONFIG.playerHandArea.y + 28, gameState.hoveredCardId === card.id);
       });
-
-      if (gameState.turnSide === 'player' && gameState.turnPhase === 'attack') {
-        drawButton(CONFIG.playerHandArea.x + 540, CONFIG.playerHandArea.y + 8, 'End Attack', 'endAttack', true);
-      }
-      if (gameState.turnSide === 'player' && gameState.turnPhase === 'guts') {
-        drawButton(CONFIG.playerHandArea.x + 390, CONFIG.playerHandArea.y + 8, 'Convert', 'convertGuts', true);
-        drawButton(CONFIG.playerHandArea.x + 540, CONFIG.playerHandArea.y + 8, 'Finish Turn', 'finishGuts', true);
-      }
     }
 
-    function drawResourceRow(sideName, data, x, y) {
+    function drawActionBar() {
+      drawPanel(CONFIG.actionBar.x, CONFIG.actionBar.y, CONFIG.actionBar.width, CONFIG.actionBar.height);
+      const bx = CONFIG.actionBar.x + 10;
+      const by = CONFIG.actionBar.y + 5;
+      drawButton(bx, by, TEXT.button.cancel, 'cancel', gameState.turnSide === 'player');
+      drawButton(bx + (CONFIG.button.width + CONFIG.button.gap), by, TEXT.button.convert, 'convert', gameState.turnSide === 'player' && gameState.turnPhase === 'guts');
+      drawButton(bx + (CONFIG.button.width + CONFIG.button.gap) * 2, by,
+        gameState.turnPhase === 'guts' ? TEXT.button.finishTurn : TEXT.button.endAttack,
+        gameState.turnPhase === 'guts' ? 'endTurn' : 'endAttack',
+        gameState.turnSide === 'player');
+      drawButton(bx + (CONFIG.button.width + CONFIG.button.gap) * 3, by, TEXT.button.log, 'toggleLog', true);
+    }
+
+    function drawFieldResourceBlock(sideName, data, x, y) {
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 18px Arial';
-      ctx.fillText(`${sideName} Guts: ${data.guts}/${data.maxGuts}`, x, y);
-      ['fire', 'thunder', 'earth'].forEach((element, index) => {
-        drawElementIcon(element, x + index * 108, y + 10, 18);
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px Arial';
-        ctx.fillText(`${data.energy[element]}/${data.maxEnergy}`, x + 24 + index * 108, y + 25);
-      });
+      ctx.font = 'bold 17px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${sideName} Guts ${data.guts}/${data.maxGuts}`, x, y);
+      drawElementPill('fire', x, y + 10, data.energy.fire, data.maxEnergy);
+      drawElementPill('thunder', x + 110, y + 10, data.energy.thunder, data.maxEnergy);
+      drawElementPill('earth', x + 220, y + 10, data.energy.earth, data.maxEnergy);
       ctx.fillStyle = '#d7e4ff';
       ctx.font = '15px Arial';
-      ctx.fillText(`Deck: ${data.deck.length}`, x, y + 48);
-      ctx.fillText(`Discard: ${data.discard.length}`, x + 130, y + 48);
+      ctx.fillText(`Deck: ${data.deck.length}`, x, y + 46);
+      ctx.fillText(`Discard: ${data.discard.length}`, x + 130, y + 46);
     }
 
-    function drawResourcePanel() {
-      drawPanel(CONFIG.resourcePanel.x, CONFIG.resourcePanel.y, CONFIG.resourcePanel.width, CONFIG.resourcePanel.height);
-      drawResourceRow('Enemy', gameState.enemy, CONFIG.resourcePanel.x + 14, CONFIG.resourcePanel.y + 30);
-      drawResourceRow('Player', gameState.player, CONFIG.resourcePanel.x + 14, CONFIG.resourcePanel.y + 114);
+    function getSelectedCard() {
+      return getCardFromHand(gameState.player, gameState.selectedCardId);
+    }
+
+    function getSelectionStatusText() {
+      if (!gameState.selectedCardId) return 'Selection: none';
+      return `Selection: ${gameState.selectionStep}`;
+    }
+
+    function drawContextPanel() {
+      drawPanel(CONFIG.contextPanel.x, CONFIG.contextPanel.y, CONFIG.contextPanel.width, CONFIG.contextPanel.height);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 24px Arial';
+      ctx.fillText(TEXT.panel.contextTitle, CONFIG.contextPanel.x + 12, CONFIG.contextPanel.y + 34);
+
+      const card = getSelectedCard() || getCardFromHand(gameState.player, gameState.hoveredCardId);
+      let y = CONFIG.contextPanel.y + 62;
+      if (!card) {
+        ctx.font = '17px Arial';
+        ctx.fillStyle = CONFIG.colors.muted;
+        ctx.fillText('Hover or select a card to inspect.', CONFIG.contextPanel.x + 12, y);
+      } else {
+        const usability = getCardUsability('player', card);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(card.name, CONFIG.contextPanel.x + 12, y);
+        y += 24;
+        ctx.font = '15px Arial';
+        ctx.fillText(`Type: ${card.type} / Cost: ${card.cost}`, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, CONFIG.contextPanel.x + 12, y);
+        y += 22;
+        const lines = wrapText(card.description, CONFIG.contextPanel.width - 24);
+        lines.slice(0, 2).forEach((line) => {
+          ctx.fillText(line, CONFIG.contextPanel.x + 12, y);
+          y += 18;
+        });
+        y += 4;
+        ctx.fillStyle = usability.playable ? '#8df4a1' : '#ff9ea1';
+        ctx.fillText(usability.playable ? 'Usable now' : `Unusable: ${usability.reason}`, CONFIG.contextPanel.x + 12, y);
+      }
+
+      y += 28;
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px Arial';
+      ctx.fillText(getSelectionStatusText(), CONFIG.contextPanel.x + 12, y);
+      y += 22;
+      ctx.fillText(`Actor: ${gameState.selectedActorId || 'none'}`, CONFIG.contextPanel.x + 12, y);
+      y += 22;
+      ctx.fillText(`Target: ${gameState.selectedTargetId || 'none'}`, CONFIG.contextPanel.x + 12, y);
+      y += 22;
+      if (gameState.ui.invalidReason !== TEXT.state.none) {
+        ctx.fillStyle = '#ffb8be';
+        ctx.fillText(`Reason: ${gameState.ui.invalidReason}`, CONFIG.contextPanel.x + 12, y);
+      }
+    }
+
+    function drawFieldPanel() {
+      drawPanel(CONFIG.fieldPanel.x, CONFIG.fieldPanel.y, CONFIG.fieldPanel.width, CONFIG.fieldPanel.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(TEXT.panel.fieldTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
+      drawFieldResourceBlock('Enemy', gameState.enemy, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 64);
+      drawFieldResourceBlock('Player', gameState.player, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 170);
       ctx.fillStyle = CONFIG.colors.muted;
-      ctx.font = '14px Arial';
-      ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.resourcePanel.x + 14, CONFIG.resourcePanel.y + 174);
+      ctx.font = '13px Arial';
+      ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 252);
     }
 
     function wrapText(text, maxWidth) {
@@ -715,61 +876,45 @@
       return lines;
     }
 
-    function drawDetailPanel() {
-      drawPanel(CONFIG.detailPanel.x, CONFIG.detailPanel.y, CONFIG.detailPanel.width, CONFIG.detailPanel.height);
-      const card = getCardFromHand(gameState.player, gameState.selectedCardId);
+    function drawLogOverlay() {
+      if (!gameState.ui.showLogOverlay) return;
+      ctx.fillStyle = CONFIG.colors.overlay;
+      ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+      drawPanel(CONFIG.logOverlay.x, CONFIG.logOverlay.y, CONFIG.logOverlay.width, CONFIG.logOverlay.height);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
-      if (!card) {
-        ctx.font = '24px Arial';
-        ctx.fillText('Card Detail', CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 34);
-        ctx.font = '17px Arial';
-        ctx.fillStyle = CONFIG.colors.muted;
-        ctx.fillText('Click a player hand card to inspect.', CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 62);
-        return;
-      }
-      ctx.font = 'bold 24px Arial';
-      ctx.fillText(card.name, CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 34);
-      ctx.font = '17px Arial';
-      ctx.fillText(`Type: ${card.type} / Cost: ${card.cost}`, CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 60);
-      ctx.fillText(`Req F${card.energyReq.fire} T${card.energyReq.thunder} E${card.energyReq.earth}`, CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 84);
-      const lines = wrapText(card.description, CONFIG.detailPanel.width - 24);
-      const start = clamp(gameState.detailScroll, 0, Math.max(0, lines.length - CONFIG.maxVisibleDetailLines));
-      lines.slice(start, start + CONFIG.maxVisibleDetailLines).forEach((line, index) => {
-        ctx.fillText(line, CONFIG.detailPanel.x + 12, CONFIG.detailPanel.y + 116 + index * 22);
-      });
-    }
-
-    function drawLogPanel() {
-      drawPanel(CONFIG.logPanel.x, CONFIG.logPanel.y, CONFIG.logPanel.width, CONFIG.logPanel.height);
-      ctx.fillStyle = '#fff';
       ctx.font = 'bold 30px Arial';
-      ctx.textAlign = 'left';
-      ctx.fillText('Log', CONFIG.logPanel.x + 12, CONFIG.logPanel.y + 34);
+      ctx.fillText(TEXT.panel.logTitle, CONFIG.logOverlay.x + 16, CONFIG.logOverlay.y + 38);
+
+      const closeX = CONFIG.logOverlay.x + CONFIG.logOverlay.width - CONFIG.button.width - 16;
+      const closeY = CONFIG.logOverlay.y + 10;
+      drawButton(closeX, closeY, TEXT.button.closeLog, 'closeLog', true);
+
       const maxStart = Math.max(0, gameState.log.length - CONFIG.maxVisibleLog);
       const start = clamp(maxStart - gameState.logScroll, 0, maxStart);
-      ctx.font = '15px Arial';
+      ctx.font = '16px Arial';
       gameState.log.slice(start, start + CONFIG.maxVisibleLog).forEach((entry, index) => {
         ctx.fillStyle = '#dbe8ff';
-        ctx.fillText(`• ${entry}`, CONFIG.logPanel.x + 12, CONFIG.logPanel.y + 62 + index * 18);
+        ctx.fillText(`• ${entry}`, CONFIG.logOverlay.x + 20, CONFIG.logOverlay.y + 86 + index * 28);
       });
     }
 
     function render() {
       ctx.fillStyle = CONFIG.colors.bg;
       ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-      gameState.uiRects = { playerCards: [], enemyCards: [], monsters: [], buttons: [] };
+      gameState.uiRects = { playerCards: [], monsters: [], buttons: [] };
       drawTurnBanner();
       drawEnemyHandArea();
       drawBattleArea();
       drawPlayerHandArea();
-      drawDetailPanel();
-      drawResourcePanel();
-      drawLogPanel();
+      drawActionBar();
+      drawContextPanel();
+      drawFieldPanel();
+      drawLogOverlay();
     }
 
     function getHitRect(rects, x, y) {
-      return rects.find((rect) => x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) || null;
+      return rects.find((rect) => rect.enabled !== false && x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) || null;
     }
 
     function toCanvasPoint(event) {
@@ -793,13 +938,21 @@
 
     function onWheel(event) {
       const point = toCanvasPoint(event);
-      const inDetail = point.x >= CONFIG.detailPanel.x && point.x <= CONFIG.detailPanel.x + CONFIG.detailPanel.width
-        && point.y >= CONFIG.detailPanel.y && point.y <= CONFIG.detailPanel.y + CONFIG.detailPanel.height;
-      const inLog = point.x >= CONFIG.logPanel.x && point.x <= CONFIG.logPanel.x + CONFIG.logPanel.width
-        && point.y >= CONFIG.logPanel.y && point.y <= CONFIG.logPanel.y + CONFIG.logPanel.height;
-      if (inDetail) gameState.detailScroll = Math.max(0, gameState.detailScroll + Math.sign(event.deltaY));
-      if (inLog) gameState.logScroll = Math.max(0, gameState.logScroll + Math.sign(event.deltaY));
-      if (inDetail || inLog) event.preventDefault();
+      if (gameState.ui.showLogOverlay) {
+        const inLog = point.x >= CONFIG.logOverlay.x && point.x <= CONFIG.logOverlay.x + CONFIG.logOverlay.width
+          && point.y >= CONFIG.logOverlay.y && point.y <= CONFIG.logOverlay.y + CONFIG.logOverlay.height;
+        if (inLog) {
+          gameState.logScroll = Math.max(0, gameState.logScroll + Math.sign(event.deltaY));
+          event.preventDefault();
+        }
+        return;
+      }
+      const inContext = point.x >= CONFIG.contextPanel.x && point.x <= CONFIG.contextPanel.x + CONFIG.contextPanel.width
+        && point.y >= CONFIG.contextPanel.y && point.y <= CONFIG.contextPanel.y + CONFIG.contextPanel.height;
+      if (inContext) {
+        gameState.detailScroll = Math.max(0, gameState.detailScroll + Math.sign(event.deltaY));
+        event.preventDefault();
+      }
     }
 
     function initializeGame() {
@@ -817,7 +970,7 @@
       gameState.enemy.deck = createDeck('e');
       gameState.phase = 'playing';
       startTurn('player');
-      appendLog('Battle started.');
+      appendLog(TEXT.msg.battleStart);
     }
 
     function loop() {
