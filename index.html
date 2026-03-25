@@ -376,6 +376,11 @@
         gameState.winner = enemyAlive === 0 ? 'player' : 'enemy';
         appendLog(formatText(TEXT.msg.win, { side: capitalize(gameState.winner) }));
       }
+      gameState.selectedCardId = cardId;
+      gameState.selectionStep = 'selectActor';
+      gameState.selectedActorId = null;
+      gameState.selectedTargetId = null;
+      appendLog(`Selected ${card.name}. Choose actor.`);
     }
 
     function beginPlayerCardSelection(cardId) {
@@ -585,7 +590,15 @@
       const ref = gameState.imageStore[key];
       if (ref && ref.ok) {
         ctx.drawImage(ref.image, x, y, w, h);
-        return;
+      } else {
+        ctx.fillStyle = '#314d7f';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#6c8cd0';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(key, x + w / 2, y + h / 2 + 4);
       }
       ctx.fillStyle = '#314d7f';
       ctx.fillRect(x, y, w, h);
