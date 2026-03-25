@@ -820,9 +820,10 @@
 
         ctx.fillStyle = enabled ? '#fff' : '#9fb4dd';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.font = 'bold 14px Arial';
-        ctx.fillText(label, x + CONFIG.button.width / 2, y + 21);
-
+        ctx.fillText(label, x + CONFIG.button.width / 2, y + CONFIG.button.height / 2);
+        
         gameState.uiRects.buttons.push({
           x,
           y,
