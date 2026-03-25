@@ -114,6 +114,7 @@
           enemyConvert: 'Enemy converted {n} cards in guts phase (+{n} Guts).',
           playerConvert: 'Player converted {n} cards in guts phase (+{n} Guts).',
           convertEnergy: 'Field gained +{gain} {element} from conversion.',
+          convertGutsOnly: '{card} was converted for +{gain} Guts.',
           selectCard: '{card} selected. Choose actor.',
           selectActor: 'Actor selected. Choose target.',
           cancelSelection: 'Selection canceled.',
@@ -243,6 +244,8 @@
       }
 
       function capitalize(text) {
+        if (typeof text !== 'string') return '';
+        if (text.length === 0) return '';
         return text.charAt(0).toUpperCase() + text.slice(1);
       }
 
@@ -693,14 +696,22 @@
         if (!card) return;
         const sideData = getSideData(side);
         sideData.guts = clamp(sideData.guts + CONFIG.guts.convertGain, 0, sideData.maxGuts);
-        gameState.field[card.element] = clamp(
-          gameState.field[card.element] + CONFIG.energy.convertGain,
-          0,
-          CONFIG.energy.max
-        );
-        appendLog(formatText(TEXT.msg.convertEnergy, {
-          gain: CONFIG.energy.convertGain,
-          element: capitalize(card.element),
+        if (ELEMENTS.includes(card.element)) {
+          gameState.field[card.element] = clamp(
+            gameState.field[card.element] + CONFIG.energy.convertGain,
+            0,
+            CONFIG.energy.max
+          );
+          appendLog(formatText(TEXT.msg.convertEnergy, {
+            gain: CONFIG.energy.convertGain,
+            element: capitalize(card.element),
+          }));
+          return;
+        }
+
+        appendLog(formatText(TEXT.msg.convertGutsOnly, {
+          card: card.name || card.id || 'Card',
+          gain: CONFIG.guts.convertGain,
         }));
       }
 
@@ -1408,6 +1419,50 @@
         ctx.fillStyle = '#ffe08e';
         ctx.fillText(preview.message || cardName, panelX + 20, panelY + 350);
         ctx.restore();
+      }
+
+      function drawEnemyIconBox(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        drawAssetOrFallback('monsters.enemy_beast_bear', x + 8, y + 8, width - 16, height - 16, 'enemy');
+      }
+
+      function drawMiniEnemyHand(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        ctx.fillStyle = '#dfe9ff';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText('Enemy Hand', x + 10, y + 18);
+
+        const startX = x + 10;
+        const cardY = y + 26;
+        const maxVisible = Math.max(1, Math.floor((width - 20) / (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap)));
+        gameState.enemy.hand.slice(0, maxVisible).forEach((card, index) => {
+          const cardX = startX + index * (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap);
+          drawAssetOrFallback(
+            card.asset,
+            cardX,
+            cardY,
+            CONFIG.enemyMiniCard.width,
+            CONFIG.enemyMiniCard.height,
+            card.name
+          );
+          ctx.strokeStyle = '#86a4dc';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(cardX, cardY, CONFIG.enemyMiniCard.width, CONFIG.enemyMiniCard.height);
+        });
+      }
+
+      function drawEnemyInfoPanel(x, y, width, height) {
+        drawPanel(x, y, width, height);
+        const enemyDeckMax = gameState.enemy.deck.length + gameState.enemy.discard.length + gameState.enemy.hand.length;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 17px Arial';
+        ctx.fillText(`Hand ×${gameState.enemy.hand.length}   Guts ${gameState.enemy.guts}`, x + 10, y + 34);
+        ctx.font = '13px Arial';
+        ctx.fillStyle = '#d7e4ff';
+        ctx.fillText(`Deck ${gameState.enemy.deck.length} / ${enemyDeckMax}`, x + 10, y + 58);
+        ctx.fillText(`Discard ${gameState.enemy.discard.length}`, x + 10, y + 78);
       }
 
       function drawEnemyIconBox(x, y, width, height) {
