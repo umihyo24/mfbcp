@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Monster Card Battle MVP</title>
+  <title>カードバトル MVP</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -11,25 +11,68 @@
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: #101a38;
-      font-family: Arial, sans-serif;
+      background: linear-gradient(160deg, #0c1630, #15284f);
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+      color: #eef4ff;
     }
     canvas {
-      border: 2px solid #304c8e;
-      box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
-      background: #1f3564;
-      width: min(96vw, 1200px);
+      width: min(96vw, 1240px);
       height: auto;
-      aspect-ratio: 1200 / 720;
+      aspect-ratio: 1240 / 780;
+      border: 2px solid #4567a5;
+      background: #13264b;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
     }
   </style>
 </head>
 <body>
-  <canvas id="game" width="1200" height="720"></canvas>
-
+  <canvas id="game" width="1240" height="780"></canvas>
   <script>
+    // Assets expected under /assets (single flat folder, no subfolders required).
+    const TEXT = {
+      title: "モンスターカードバトル MVP",
+      startButton: "開始",
+      restartButton: "もう一度",
+      phaseStart: "開始",
+      phasePlaying: "バトル中",
+      phaseGameover: "終了",
+      turnPlayer: "あなたのターン",
+      turnEnemy: "敵のターン",
+      panelEnemy: "敵モンスター",
+      panelPlayer: "味方モンスター",
+      panelHand: "手札 (5枚)",
+      panelDetail: "カード詳細",
+      panelResource: "リソース",
+      panelLog: "ログ",
+      selectHintCard: "手札を選択してください",
+      selectHintTarget: "攻撃先を選択してください",
+      common: "通常",
+      type: "属性",
+      shard: "欠片",
+      guts: "ガッツ",
+      energy: "属性エネルギー",
+      hp: "HP",
+      winnerPlayer: "勝利！敵を全滅させました",
+      winnerEnemy: "敗北…味方が全滅しました",
+      logBattleStart: "バトル開始",
+      logPlayerTurn: "あなたのターン開始",
+      logEnemyTurn: "敵のターン開始",
+      logNeedResource: "このカードは使用条件を満たしていません",
+      logNeedTarget: "攻撃対象を選んでください",
+      logDefeated: "{name} は倒れた",
+      logAttack: "{actor} が {target} に {damage} ダメージ",
+      logShard: "{owner} が {element} 欠片を使い ガッツ+1 / {element}エネルギー+1",
+      ownerPlayer: "あなた",
+      ownerEnemy: "敵",
+      elementFire: "炎",
+      elementThunder: "雷",
+      elementEarth: "土",
+      missingImage: "画像なし"
+    };
+
     const CONFIG = {
-      canvas: { width: 1200, height: 720 },
+      w: 1240,
+      h: 780,
       teamSize: 3,
       handSize: 5,
       maxLogEntries: 140,
@@ -113,6 +156,16 @@
       state: {
         none: 'none',
       },
+      rect: {
+        turn: { x: 20, y: 16, w: 760, h: 48 },
+        enemyRow: { x: 20, y: 74, w: 760, h: 182 },
+        playerRow: { x: 20, y: 266, w: 760, h: 182 },
+        hand: { x: 20, y: 458, w: 760, h: 210 },
+        detail: { x: 790, y: 74, w: 430, h: 260 },
+        resource: { x: 790, y: 344, w: 430, h: 150 },
+        log: { x: 790, y: 504, w: 430, h: 244 },
+        startOverlay: { x: 250, y: 200, w: 740, h: 380 }
+      }
     };
 
     const ASSETS = {
@@ -126,7 +179,9 @@
       },
     };
 
-    const ctx = document.getElementById('game').getContext('2d');
+    const ELEMENTS = ["fire", "thunder", "earth"];
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
     const gameState = {
       phase: 'start',
@@ -967,17 +1022,9 @@
       requestAnimationFrame(loop);
     }
 
-    function start() {
-      loadAssets();
-      initializeGame();
-      const canvas = document.getElementById('game');
-      canvas.addEventListener('click', onCanvasClick);
-      canvas.addEventListener('mousemove', onMouseMove);
-      canvas.addEventListener('wheel', onWheel, { passive: false });
-      requestAnimationFrame(loop);
-    }
-
-    start();
+    canvas.addEventListener("click", handleClick);
+    preloadImages();
+    requestAnimationFrame(loop);
   </script>
 </body>
 </html>
