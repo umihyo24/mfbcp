@@ -168,6 +168,7 @@
           def_beast_guard: '/assets/cards/def_beast_guard.png',
         },
       };
+      const imageCache = new Map();
 
       const ELEMENTS = ["fire", "thunder", "earth"];
       const canvas = document.getElementById("game");
@@ -233,6 +234,21 @@
 
       function getElementColor(element) {
         return CONFIG.colors[element] || '#fff';
+      }
+
+      function drawImageOrFallback(img, x, y, w, h, label) {
+        if (img && img.complete && !img.failed) {
+          ctx.drawImage(img, x, y, w, h);
+          return;
+        }
+        ctx.fillStyle = '#314d7f';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#6c8cd0';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(label || 'missing', x + w / 2, y + h / 2 + 4);
       }
 
       function formatText(template, values) {
