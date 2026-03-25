@@ -115,38 +115,6 @@
       state: {
         none: 'none',
       },
-      button: {
-        cancel: 'Cancel',
-        convert: 'Convert',
-        endAttack: 'End Attack Phase',
-        finishTurn: 'End Turn',
-        log: 'Log',
-        closeLog: 'Close Log',
-      },
-      panel: {
-        enemyHand: 'Enemy Hand (Visible)',
-        playerHand: 'Player Hand',
-        contextTitle: 'Context / Detail',
-        fieldTitle: 'Field Resources',
-        logTitle: 'Battle Log',
-      },
-      msg: {
-        battleStart: 'Battle started.',
-        drawRecover: '{side} recovered +{gain} Guts in draw phase.',
-        attackStart: '{side} attack phase started.',
-        enemyConvert: 'Enemy converted {n} cards in guts phase (+{n} Guts).',
-        playerConvert: 'Player converted {n} cards in guts phase (+{n} Guts).',
-        convertEnergy: '{side} gained +{gain} {element} energy from conversion.',
-        selectCard: '{card} selected. Choose actor.',
-        selectActor: 'Actor selected. Choose target.',
-        cancelSelection: 'Selection canceled.',
-        invalidCard: 'Card is not playable: {reason}',
-        invalidTarget: 'Invalid target.',
-        cardUsedDamage: '{side} used {card} with {actor} on {target} for {amount}.',
-        cardUsedShard: '{side} used {card} ({actor} -> {target}) for +1 Guts / +1 {energy} Energy.',
-        defeated: '{name} was defeated.',
-        win: '{side} wins.',
-      },
       reason: {
         noCard: 'No card selected.',
         shardAlways: 'SHARD is always playable.',
@@ -435,10 +403,6 @@
         gameState.winner = enemyAlive === 0 ? 'player' : 'enemy';
         appendLog(formatText(TEXT.msg.win, { side: capitalize(gameState.winner) }));
       }
-      if (gameState.selectedCardId === cardId) {
-        cancelSelection(TEXT.msg.cancelSelection);
-        return;
-      }
       const card = getCardFromHand(gameState.player, cardId);
       const usability = getCardUsability('player', card);
       if (!usability.playable) {
@@ -607,6 +571,9 @@
         if (gameState.turnPhase === 'attack') beginPlayerCardSelection(cardHit.id);
         if (gameState.turnPhase === 'guts') togglePlayerGutsCard(cardHit.id);
       }
+      if (action === 'convert' && gameState.turnPhase === 'guts') convertSelectedPlayerCards();
+      if (action === 'endAttack' && gameState.turnPhase === 'attack') endPlayerAttackPhase();
+      if (action === 'endTurn' && gameState.turnPhase === 'guts') finishPlayerGutsPhase();
     }
 
     function update() {
@@ -1049,6 +1016,7 @@
       requestAnimationFrame(loop);
     }
 
+    window.start = start;
     start();
     })();
   </script>
