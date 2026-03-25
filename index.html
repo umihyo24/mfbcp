@@ -1236,42 +1236,46 @@
         ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 262);
       }
 
-      function drawLogOverlay() {
-        if (!gameState.ui.showLogOverlay) return;
+function drawLogOverlay() {
+  if (!gameState.ui.showLogOverlay) return;
 
-        ctx.fillStyle = CONFIG.colors.overlay;
-        ctx.fillRect(0, 0, CONFIG.w, CONFIG.h);
+  ctx.save();
 
-        drawPanel(
-          CONFIG.logOverlay.x,
-          CONFIG.logOverlay.y,
-          CONFIG.logOverlay.width,
-          CONFIG.logOverlay.height
-        );
+  ctx.fillStyle = CONFIG.colors.overlay;
+  ctx.fillRect(0, 0, CONFIG.w, CONFIG.h);
 
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 30px Arial';
-        ctx.fillText(TEXT.panel.logTitle, CONFIG.logOverlay.x + 16, CONFIG.logOverlay.y + 38);
+  drawPanel(
+    CONFIG.logOverlay.x,
+    CONFIG.logOverlay.y,
+    CONFIG.logOverlay.width,
+    CONFIG.logOverlay.height
+  );
 
-        const closeX = CONFIG.logOverlay.x + CONFIG.logOverlay.width - CONFIG.button.width - 16;
-        const closeY = CONFIG.logOverlay.y + 10;
-        drawButton(closeX, closeY, TEXT.button.closeLog, 'closeLog', true);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = 'bold 30px Arial';
+  ctx.fillText(TEXT.panel.logTitle, CONFIG.logOverlay.x + 16, CONFIG.logOverlay.y + 38);
 
-        // ここを追加
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.font = '16px Arial';
-        
-        const maxStart = Math.max(0, gameState.log.length - CONFIG.maxVisibleLog);
-        const start = clamp(maxStart - gameState.logScroll, 0, maxStart);
+  const closeX = CONFIG.logOverlay.x + CONFIG.logOverlay.width - CONFIG.button.width - 16;
+  const closeY = CONFIG.logOverlay.y + 10;
+  drawButton(closeX, closeY, TEXT.button.closeLog, 'closeLog', true);
 
-        ctx.font = '16px Arial';
-        gameState.log.slice(start, start + CONFIG.maxVisibleLog).forEach((entry, index) => {
-          ctx.fillStyle = '#dbe8ff';
-          ctx.fillText(`• ${entry}`, CONFIG.logOverlay.x + 20, CONFIG.logOverlay.y + 86 + index * 28);
-        });
-      }
+  // drawButton が中央寄せに変えるので、本文用に戻す
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '16px Arial';
+
+  const maxStart = Math.max(0, gameState.log.length - CONFIG.maxVisibleLog);
+  const start = clamp(maxStart - gameState.logScroll, 0, maxStart);
+
+  gameState.log.slice(start, start + CONFIG.maxVisibleLog).forEach((entry, index) => {
+    ctx.fillStyle = '#dbe8ff';
+    ctx.fillText(`• ${entry}`, CONFIG.logOverlay.x + 20, CONFIG.logOverlay.y + 86 + index * 28);
+  });
+
+  ctx.restore();
+}
 
       function render() {
         ctx.fillStyle = CONFIG.colors.bg;
