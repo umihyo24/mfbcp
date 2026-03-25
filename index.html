@@ -43,11 +43,11 @@
         drawGutsRecover: { 3: 1, 2: 2, 1: 3, 0: 0 },
         energy: { start: 1, max: 10, shardGain: 1, convertGain: 1 },
         damage: { common: 22, type: 30 },
-        turnBanner: { x: 280, y: 10, width: 440, height: 54 },
         enemyHandArea: { x: 24, y: 70, width: 760, height: 82 },
         monsterArea: { x: 24, y: 160, width: 760, height: 306 },
-        playerHandArea: { x: 24, y: 472, width: 760, height: 194 },
-        actionBar: { x: 24, y: 670, width: 760, height: 42 },
+        middleBand: { x: 24, y: 472, width: 760, height: 44 },
+        turnBanner: { x: 34, y: 477, width: 420, height: 34 },
+        playerHandArea: { x: 24, y: 522, width: 760, height: 194 },
         contextPanel: { x: 800, y: 70, width: 376, height: 360 },
         fieldPanel: { x: 800, y: 438, width: 376, height: 274 },
         monsterCard: { width: 236, height: 140, gap: 12, iconSize: 60, hpBarWidth: 126, hpBarHeight: 12 },
@@ -89,8 +89,6 @@
           gameoverEnemy: 'ENEMY WINS',
         },
         button: {
-          cancel: 'Cancel',
-          convert: 'Convert',
           endAttack: 'End Attack Phase',
           finishTurn: 'End Turn',
           log: 'Log',
@@ -100,7 +98,7 @@
           enemyHand: 'Enemy Hand (Visible)',
           playerHand: 'Player Hand',
           contextTitle: 'Context / Detail',
-          fieldTitle: 'Field Resources',
+          fieldTitle: 'Shared Field Resources',
           logTitle: 'Battle Log',
         },
         msg: {
@@ -109,7 +107,7 @@
           attackStart: '{side} attack phase started.',
           enemyConvert: 'Enemy converted {n} cards in guts phase (+{n} Guts).',
           playerConvert: 'Player converted {n} cards in guts phase (+{n} Guts).',
-          convertEnergy: '{side} gained +{gain} {element} energy from conversion.',
+          convertEnergy: 'Field gained +{gain} {element} from conversion.',
           selectCard: '{card} selected. Choose actor.',
           selectActor: 'Actor selected. Choose target.',
           cancelSelection: 'Selection canceled.',
@@ -176,15 +174,15 @@
         ui: { showLogOverlay: false, invalidReason: TEXT.state.none },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
+        field: {
+          fire: CONFIG.energy.start,
+          thunder: CONFIG.energy.start,
+          earth: CONFIG.energy.start,
+          maxEnergy: CONFIG.energy.max
+        },
         player: {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
-          energy: {
-            fire: CONFIG.energy.start,
-            thunder: CONFIG.energy.start,
-            earth: CONFIG.energy.start
-          },
-          maxEnergy: CONFIG.energy.max,
           monsters: [],
           hand: [],
           deck: [],
@@ -193,12 +191,6 @@
         enemy: {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
-          energy: {
-            fire: CONFIG.energy.start,
-            thunder: CONFIG.energy.start,
-            earth: CONFIG.energy.start
-          },
-          maxEnergy: CONFIG.energy.max,
           monsters: [],
           hand: [],
           deck: [],
@@ -326,12 +318,12 @@
         }
 
         for (const [element, need] of Object.entries(card.energyReq)) {
-          if (sideData.energy[element] < need) {
+          if (gameState.field[element] < need) {
             return {
               playable: false,
               reason: formatText(TEXT.reason.needEnergy, {
                 element: capitalize(element),
-                have: sideData.energy[element],
+                have: gameState.field[element],
                 need
               })
             };
@@ -386,13 +378,12 @@
         if (!card) return;
         const sideData = getSideData(side);
         sideData.guts = clamp(sideData.guts + CONFIG.guts.convertGain, 0, sideData.maxGuts);
-        sideData.energy[card.element] = clamp(
-          sideData.energy[card.element] + CONFIG.energy.convertGain,
+        gameState.field[card.element] = clamp(
+          gameState.field[card.element] + CONFIG.energy.convertGain,
           0,
-          sideData.maxEnergy
+          gameState.field.maxEnergy
         );
         appendLog(formatText(TEXT.msg.convertEnergy, {
-          side: capitalize(side),
           gain: CONFIG.energy.convertGain,
           element: capitalize(card.element),
         }));
@@ -433,10 +424,10 @@
             0,
             sideData.maxGuts
           );
-          sideData.energy[card.effect.energy] = clamp(
-            sideData.energy[card.effect.energy] + CONFIG.energy.shardGain,
+          gameState.field[card.effect.energy] = clamp(
+            gameState.field[card.effect.energy] + CONFIG.energy.shardGain,
             0,
-            sideData.maxEnergy
+            gameState.field.maxEnergy
           );
 
           appendLog(formatText(TEXT.msg.cardUsedShard, {
@@ -489,16 +480,8 @@
       }
 
       function runEnemyGutsPhase() {
-        const enemy = gameState.enemy;
-        const converted = enemy.hand.length;
-
-        while (enemy.hand.length > 0) {
-          const card = enemy.hand.pop();
-          enemy.discard.push(card);
-          gainResourcesFromConversion('enemy', card);
-        }
-
-        appendLog(formatText(TEXT.msg.enemyConvert, { n: converted }));
+        const enemyCardIds = gameState.enemy.hand.map((card) => card.id);
+        applyGutsConversion('enemy', enemyCardIds);
         finishTurn();
       }
 
@@ -600,26 +583,31 @@
         else ids.push(cardId);
       }
 
-      function convertSelectedPlayerCards() {
-        if (gameState.turnSide !== 'player' || gameState.turnPhase !== 'guts') return;
-
-        const selectedIds = [...gameState.temp.gutsSelectedCardIds];
+      function applyGutsConversion(side, cardIds) {
         let converted = 0;
-
-        selectedIds.forEach((cardId) => {
-          const moved = moveCardToDiscard('player', cardId);
+        cardIds.forEach((cardId) => {
+          const moved = moveCardToDiscard(side, cardId);
           if (moved) {
             converted += 1;
-            gainResourcesFromConversion('player', moved);
+            gainResourcesFromConversion(side, moved);
           }
         });
+        appendLog(formatText(
+          side === 'player' ? TEXT.msg.playerConvert : TEXT.msg.enemyConvert,
+          { n: converted }
+        ));
+      }
 
+      function convertSelectedPlayerCards() {
+        if (gameState.turnSide !== 'player' || gameState.turnPhase !== 'guts') return;
+        const selectedIds = [...gameState.temp.gutsSelectedCardIds];
+        applyGutsConversion('player', selectedIds);
         gameState.temp.gutsSelectedCardIds = [];
-        appendLog(formatText(TEXT.msg.playerConvert, { n: converted }));
       }
 
       function finishPlayerGutsPhase() {
         if (gameState.turnSide !== 'player' || gameState.turnPhase !== 'guts') return;
+        convertSelectedPlayerCards();
         finishTurn();
       }
 
@@ -669,11 +657,6 @@
         if (action === 'cancel') {
           cancelSelection(TEXT.msg.cancelSelection);
           gameState.temp.gutsSelectedCardIds = [];
-          return;
-        }
-
-        if (action === 'convert' && gameState.turnPhase === 'guts') {
-          convertSelectedPlayerCards();
           return;
         }
 
@@ -814,26 +797,22 @@
         ctx.fillText(`${capitalize(element)} ${value}/${max}`, x + 6, y + 14);
       }
 
-      function drawTurnBanner() {
-        drawPanel(CONFIG.turnBanner.x, CONFIG.turnBanner.y, CONFIG.turnBanner.width, CONFIG.turnBanner.height);
-
+      function getTurnBannerText() {
         let text = TEXT.turn.playerAttack;
         if (gameState.phase === 'gameover') {
-          text = gameState.winner === 'player'
+          return gameState.winner === 'player'
             ? TEXT.turn.gameoverPlayer
             : TEXT.turn.gameoverEnemy;
-        } else if (gameState.turnSide === 'enemy') {
-          text = gameState.turnPhase === 'guts'
+        }
+        if (gameState.turnSide === 'enemy') {
+          return gameState.turnPhase === 'guts'
             ? TEXT.turn.enemyGuts
             : TEXT.turn.enemyAttack;
-        } else if (gameState.turnPhase === 'guts') {
-          text = TEXT.turn.playerGuts;
         }
-
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 25px Arial';
-        ctx.fillText(text, CONFIG.turnBanner.x + CONFIG.turnBanner.width / 2, CONFIG.turnBanner.y + 34);
+        if (gameState.turnPhase === 'guts') {
+          return TEXT.turn.playerGuts;
+        }
+        return text;
       }
 
       function drawMonsterCard(monster, side, x, y) {
@@ -1020,50 +999,35 @@
         });
       }
 
-      function drawActionBar() {
-        drawPanel(CONFIG.actionBar.x, CONFIG.actionBar.y, CONFIG.actionBar.width, CONFIG.actionBar.height);
+      function drawMiddleBand() {
+        drawPanel(CONFIG.middleBand.x, CONFIG.middleBand.y, CONFIG.middleBand.width, CONFIG.middleBand.height);
+        drawPanel(CONFIG.turnBanner.x, CONFIG.turnBanner.y, CONFIG.turnBanner.width, CONFIG.turnBanner.height);
 
-        const bx = CONFIG.actionBar.x + 10;
-        const by = CONFIG.actionBar.y + 5;
-
-        drawButton(bx, by, TEXT.button.cancel, 'cancel', gameState.turnSide === 'player');
-        drawButton(
-          bx + (CONFIG.button.width + CONFIG.button.gap),
-          by,
-          TEXT.button.convert,
-          'convert',
-          gameState.turnSide === 'player' && gameState.turnPhase === 'guts'
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText(
+          getTurnBannerText(),
+          CONFIG.turnBanner.x + CONFIG.turnBanner.width / 2,
+          CONFIG.turnBanner.y + 23
         );
+
+        const buttonY = CONFIG.middleBand.y + 6;
+        const endTurnX = CONFIG.middleBand.x + CONFIG.middleBand.width - (CONFIG.button.width * 2 + CONFIG.button.gap + 12);
         drawButton(
-          bx + (CONFIG.button.width + CONFIG.button.gap) * 2,
-          by,
+          endTurnX,
+          buttonY,
           gameState.turnPhase === 'guts' ? TEXT.button.finishTurn : TEXT.button.endAttack,
           gameState.turnPhase === 'guts' ? 'endTurn' : 'endAttack',
           gameState.turnSide === 'player'
         );
         drawButton(
-          bx + (CONFIG.button.width + CONFIG.button.gap) * 3,
-          by,
+          endTurnX + CONFIG.button.width + CONFIG.button.gap,
+          buttonY,
           TEXT.button.log,
           'toggleLog',
           true
         );
-      }
-
-      function drawFieldResourceBlock(sideName, data, x, y) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 17px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`${sideName} Guts ${data.guts}/${data.maxGuts}`, x, y);
-
-        drawElementPill('fire', x, y + 10, data.energy.fire, data.maxEnergy);
-        drawElementPill('thunder', x + 110, y + 10, data.energy.thunder, data.maxEnergy);
-        drawElementPill('earth', x + 220, y + 10, data.energy.earth, data.maxEnergy);
-
-        ctx.fillStyle = '#d7e4ff';
-        ctx.font = '15px Arial';
-        ctx.fillText(`Deck: ${data.deck.length}`, x, y + 46);
-        ctx.fillText(`Discard: ${data.discard.length}`, x + 130, y + 46);
       }
 
       function getSelectedCard() {
@@ -1162,13 +1126,30 @@
         ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'left';
         ctx.fillText(TEXT.panel.fieldTitle, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 30);
+        drawElementPill('fire', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 54, gameState.field.fire, gameState.field.maxEnergy);
+        drawElementPill('thunder', CONFIG.fieldPanel.x + 122, CONFIG.fieldPanel.y + 54, gameState.field.thunder, gameState.field.maxEnergy);
+        drawElementPill('earth', CONFIG.fieldPanel.x + 232, CONFIG.fieldPanel.y + 54, gameState.field.earth, gameState.field.maxEnergy);
 
-        drawFieldResourceBlock('Enemy', gameState.enemy, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 64);
-        drawFieldResourceBlock('Player', gameState.player, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 170);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText('Guts変換: Gutsフェーズで選択した手札はEnd Turn時に変換', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 102);
+        ctx.font = '15px Arial';
+        ctx.fillStyle = '#d7e4ff';
+        ctx.fillText('1枚ごとに +1 Guts / +1 対応属性(F/T/E)', CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 126);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 17px Arial';
+        ctx.fillText(`Player Guts ${gameState.player.guts}/${gameState.player.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 164);
+        ctx.fillText(`Enemy Guts ${gameState.enemy.guts}/${gameState.enemy.maxGuts}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 190);
+
+        ctx.fillStyle = '#d7e4ff';
+        ctx.font = '15px Arial';
+        ctx.fillText(`Player Deck ${gameState.player.deck.length} / Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 218);
+        ctx.fillText(`Enemy Deck ${gameState.enemy.deck.length} / Discard ${gameState.enemy.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 240);
 
         ctx.fillStyle = CONFIG.colors.muted;
         ctx.font = '13px Arial';
-        ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 252);
+        ctx.fillText(`Enemy actions/turn: ${CONFIG.MAX_ACTIONS_PER_TURN}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 262);
       }
 
       function drawLogOverlay() {
@@ -1209,11 +1190,10 @@
 
         gameState.uiRects = { playerCards: [], monsters: [], buttons: [] };
 
-        drawTurnBanner();
         drawEnemyHandArea();
         drawBattleArea();
+        drawMiddleBand();
         drawPlayerHandArea();
-        drawActionBar();
         drawContextPanel();
         drawFieldPanel();
         drawLogOverlay();
@@ -1284,16 +1264,16 @@
         gameState.hoveredCardId = null;
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
+        gameState.field = {
+          fire: CONFIG.energy.start,
+          thunder: CONFIG.energy.start,
+          earth: CONFIG.energy.start,
+          maxEnergy: CONFIG.energy.max
+        };
 
         gameState.player = {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
-          energy: {
-            fire: CONFIG.energy.start,
-            thunder: CONFIG.energy.start,
-            earth: CONFIG.energy.start
-          },
-          maxEnergy: CONFIG.energy.max,
           monsters: [
             makeMonster('p1', 'Ember Cub', 'fire', 'ember'),
             makeMonster('p2', 'Bolt Pup', 'thunder', 'spark'),
@@ -1307,12 +1287,6 @@
         gameState.enemy = {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
-          energy: {
-            fire: CONFIG.energy.start,
-            thunder: CONFIG.energy.start,
-            earth: CONFIG.energy.start
-          },
-          maxEnergy: CONFIG.energy.max,
           monsters: [
             makeMonster('e1', 'Raider Ember', 'fire', 'enemyEmber'),
             makeMonster('e2', 'Raider Bolt', 'thunder', 'enemySpark'),
