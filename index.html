@@ -189,6 +189,10 @@
         enemyActionTimer: 0,
         enemyActionsDone: 0,
         inputQueue: [],
+        assets: {
+          refs: {},
+          warnedMissing: {}
+        },
         ui: { showLogOverlay: false, invalidReason: TEXT.state.none, enemyMessage: TEXT.state.enemyIdleMessage },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
@@ -270,23 +274,69 @@
         return group[name] || null;
       }
 
-      function createImage(key) {
+      function createImageRef(key, src) {
+        const img = new Image();
+        const ref = {
+          key,
+          src,
+          image: img,
+          ok: false,
+          failed: false
+        };
+        img.onload = () => {
+          ref.ok = true;
+          ref.failed = false;
+        };
+        img.onerror = () => {
+          ref.ok = false;
+          ref.failed = true;
+        };
+        img.src = src;
+        return ref;
+      }
+
+      function getImageRef(key) {
         if (!key || typeof key !== 'string') return null;
-        if (imageCache.has(key)) return imageCache.get(key);
+        const cached = gameState.assets.refs[key];
+        if (cached) return cached;
 
         const path = resolveAssetPath(key);
         if (!path) {
-          imageCache.set(key, null);
-          return null;
+          const missingRef = {
+            key,
+            src: null,
+            image: null,
+            ok: false,
+            failed: true
+          };
+          gameState.assets.refs[key] = missingRef;
+          return missingRef;
         }
 
-        const img = new Image();
-        img.failed = false;
-        img.onload = () => { img.failed = false; };
-        img.onerror = () => { img.failed = true; };
-        img.src = path;
-        imageCache.set(key, img);
-        return img;
+        const created = createImageRef(key, path);
+        gameState.assets.refs[key] = created;
+        return created;
+      }
+
+      function drawAssetOrFallback(key, x, y, w, h, label) {
+        const ref = getImageRef(key);
+        if (ref && ref.ok && ref.image) {
+          ctx.drawImage(ref.image, x, y, w, h);
+          return;
+        }
+        if (ref && ref.failed && !gameState.assets.warnedMissing[key]) {
+          console.warn(`[asset-missing] ${key}`);
+          gameState.assets.warnedMissing[key] = true;
+        }
+
+        ctx.fillStyle = '#314d7f';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#6c8cd0';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(label || key || 'missing', x + w / 2, y + h / 2 + 4);
       }
 
       function setEnemyMessage(message) {
@@ -1072,14 +1122,7 @@
           ctx.strokeRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
         }
 
-        drawImageOrFallback(
-          createImage(monster.asset),
-          x + 12,
-          y + 10,
-          CONFIG.monsterCard.iconSize,
-          CONFIG.monsterCard.iconSize,
-          monster.id
-        );
+        drawAssetOrFallback(monster.asset, x + 12, y + 10, CONFIG.monsterCard.iconSize, CONFIG.monsterCard.iconSize, monster.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1194,7 +1237,7 @@
           ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
         }
 
-        drawImageOrFallback(createImage(card.asset), dx + 10, dy + 8, width - 20, 70, card.id);
+        drawAssetOrFallback(card.asset, dx + 10, dy + 8, width - 20, 70, card.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1276,14 +1319,7 @@
 
         const iconX = CONFIG.enemyHeader.x + 10;
         const iconY = CONFIG.enemyHeader.y + 7;
-        drawImageOrFallback(
-          createImage('monsters.enemy_beast_bear'),
-          iconX,
-          iconY,
-          CONFIG.enemyHeader.iconSize,
-          CONFIG.enemyHeader.iconSize,
-          'enemy'
-        );
+        drawAssetOrFallback('monsters.enemy_beast_bear', iconX, iconY, CONFIG.enemyHeader.iconSize, CONFIG.enemyHeader.iconSize, 'enemy');
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1559,6 +1595,8 @@ function drawLogOverlay() {
         gameState.winner = null;
         gameState.ui.showLogOverlay = false;
         gameState.ui.enemyMessage = TEXT.state.enemyIdleMessage;
+        gameState.assets.refs = {};
+        gameState.assets.warnedMissing = {};
         gameState.hoveredCardId = null;
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
