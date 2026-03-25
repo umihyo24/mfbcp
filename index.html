@@ -145,22 +145,30 @@
 
       const ASSETS = {
         monsters: {
-          ember: '/assets/monsters/ember.png',
-          spark: '/assets/monsters/spark.png',
-          moss: '/assets/monsters/moss.png',
-          enemyEmber: '/assets/monsters/enemy_ember.png',
-          enemySpark: '/assets/monsters/enemy_spark.png',
-          enemyMoss: '/assets/monsters/enemy_moss.png',
+          beast_bear: '/assets/monsters/beast_bear.png',
+          thunder_wolf: '/assets/monsters/thunder_wolf.png',
+          earth_turtle: '/assets/monsters/earth_turtle.png',
+          enemy_beast_bear: '/assets/monsters/beast_bear.png',
+          enemy_thunder_wolf: '/assets/monsters/thunder_wolf.png',
+          enemy_earth_turtle: '/assets/monsters/earth_turtle.png',
         },
         cards: {
-          flameHit: '/assets/cards/flame_hit.png',
-          sparkHit: '/assets/cards/spark_hit.png',
-          earthHit: '/assets/cards/earth_hit.png',
-          fireShard: '/assets/cards/fire_shard.png',
-          thunderShard: '/assets/cards/thunder_shard.png',
-          earthShard: '/assets/cards/earth_shard.png',
+          atk_fire_common_punch: '/assets/cards/atk_fire_common_punch.png',
+          atk_thunder_common_punch: '/assets/cards/atk_thunder_common_punch.png',
+          atk_earth_common_punch: '/assets/cards/atk_earth_common_punch.png',
+          atk_fire_beast_magmaPunch: '/assets/cards/atk_fire_beast_magmaPunch.png',
+          atk_thunder_beast_boltBurst: '/assets/cards/atk_thunder_beast_boltBurst.png',
+          atk_earth_beast_rootBurst: '/assets/cards/atk_earth_beast_rootBurst.png',
+          atk_neutral_common_raiKa: '/assets/cards/atk_neutral_common_raiKa.png',
+          atk_fire_beast_megaFlame: '/assets/cards/atk_fire_beast_megaFlame.png',
+          atk_thunder_beast_stormNova: '/assets/cards/atk_thunder_beast_stormNova.png',
+          sup_fire_common_shard: '/assets/cards/sup_fire_common_shard.png',
+          sup_thunder_common_shard: '/assets/cards/sup_thunder_common_shard.png',
+          sup_earth_common_shard: '/assets/cards/sup_earth_common_shard.png',
+          def_beast_guard: '/assets/cards/def_beast_guard.png',
         },
       };
+      const imageCache = new Map();
 
       const ELEMENTS = ["fire", "thunder", "earth"];
       const canvas = document.getElementById("game");
@@ -181,7 +189,6 @@
         enemyActionTimer: 0,
         enemyActionsDone: 0,
         inputQueue: [],
-        imageStore: {},
         ui: { showLogOverlay: false, invalidReason: TEXT.state.none, enemyMessage: TEXT.state.enemyIdleMessage },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
@@ -225,6 +232,21 @@
         return CONFIG.colors[element] || '#fff';
       }
 
+      function drawImageOrFallback(img, x, y, w, h, label) {
+        if (img && img.complete && !img.failed) {
+          ctx.drawImage(img, x, y, w, h);
+          return;
+        }
+        ctx.fillStyle = '#314d7f';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#6c8cd0';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(label || 'missing', x + w / 2, y + h / 2 + 4);
+      }
+
       function formatText(template, values) {
         return Object.entries(values).reduce(
           (t, [k, v]) => t.replaceAll(`{${k}}`, `${v}`),
@@ -239,16 +261,45 @@
         }
       }
 
+      function resolveAssetPath(key) {
+        if (!key || typeof key !== 'string') return null;
+        const [category, name] = key.split('.');
+        if (!category || !name) return null;
+        const group = ASSETS[category];
+        if (!group || typeof group !== 'object') return null;
+        return group[name] || null;
+      }
+
+      function createImage(key) {
+        if (!key || typeof key !== 'string') return null;
+        if (imageCache.has(key)) return imageCache.get(key);
+
+        const path = resolveAssetPath(key);
+        if (!path) {
+          imageCache.set(key, null);
+          return null;
+        }
+
+        const img = new Image();
+        img.failed = false;
+        img.onload = () => { img.failed = false; };
+        img.onerror = () => { img.failed = true; };
+        img.src = path;
+        imageCache.set(key, img);
+        return img;
+      }
+
       function setEnemyMessage(message) {
         gameState.ui.enemyMessage = message || TEXT.state.enemyIdleMessage;
       }
 
-      function makeMonster(id, name, element, spriteKey) {
+      function makeMonster(id, name, element, type, asset) {
         return {
           id,
           name,
           element,
-          spriteKey,
+          type,
+          asset,
           attackType: element,
           defenseType: element,
           hasActedThisTurn: false,
@@ -269,21 +320,26 @@
       function makeCard({
         id,
         name,
+        asset,
+        category = 'atk',
         cardClass,
         timing = 'attack',
         element = null,
+        scope = 'common',
         cost = 0,
         requirement = { fire: 0, thunder: 0, earth: 0 },
         enhance = null,
         consume = { fire: 0, thunder: 0, earth: 0 },
         description = '',
-        spriteKey = '',
         effect = { kind: 'damage', amount: 0 },
         requiredAttackType = null
       }) {
         return {
           id,
           name,
+          asset,
+          category,
+          scope,
           cardClass,
           type: cardClass,
           timing,
@@ -299,7 +355,6 @@
             : null,
           consume: normalizeEnergySet(consume),
           description,
-          spriteKey,
           effect,
           requiredAttackType
         };
@@ -316,18 +371,18 @@
 
       function createDeck(ownerPrefix) {
         const set = [
-          makeCard({ id: `${ownerPrefix}-c1`, name: 'Fire Jab', cardClass: 'COMMON', element: 'fire', cost: 2, requirement: { fire: 1, thunder: 0, earth: 0 }, description: 'Deal 22 damage to one enemy.', spriteKey: 'flameHit', effect: { kind: 'damage', amount: 22 } }),
-          makeCard({ id: `${ownerPrefix}-c2`, name: 'Bolt Jab', cardClass: 'COMMON', element: 'thunder', cost: 2, requirement: { fire: 0, thunder: 1, earth: 0 }, description: 'Deal 22 damage to one enemy.', spriteKey: 'sparkHit', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
-          makeCard({ id: `${ownerPrefix}-c3`, name: 'Root Jab', cardClass: 'COMMON', element: 'earth', cost: 2, requirement: { fire: 0, thunder: 0, earth: 1 }, description: 'Deal 22 damage to one enemy.', spriteKey: 'earthHit', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
-          makeCard({ id: `${ownerPrefix}-c4`, name: 'Flame Burst', cardClass: 'TYPE', element: 'fire', cost: 3, requirement: { fire: 2, thunder: 0, earth: 0 }, description: 'Deal 30 damage to one enemy.', spriteKey: 'flameHit', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'fire' }),
-          makeCard({ id: `${ownerPrefix}-c5`, name: 'Thunder Burst', cardClass: 'TYPE', element: 'thunder', cost: 3, requirement: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 30 damage to one enemy.', spriteKey: 'sparkHit', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'thunder' }),
-          makeCard({ id: `${ownerPrefix}-c6`, name: 'Earth Burst', cardClass: 'TYPE', element: 'earth', cost: 3, requirement: { fire: 0, thunder: 0, earth: 2 }, description: 'Deal 30 damage to one enemy.', spriteKey: 'earthHit', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'earth' }),
-          makeCard({ id: `${ownerPrefix}-c7`, name: 'Fire Shard', cardClass: 'SHARD', element: 'fire', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Fire Energy.', spriteKey: 'fireShard', effect: { kind: 'shard', energy: 'fire' } }),
-          makeCard({ id: `${ownerPrefix}-c8`, name: 'Thunder Shard', cardClass: 'SHARD', element: 'thunder', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', spriteKey: 'thunderShard', effect: { kind: 'shard', energy: 'thunder' } }),
-          makeCard({ id: `${ownerPrefix}-c9`, name: 'Earth Shard', cardClass: 'SHARD', element: 'earth', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', spriteKey: 'earthShard', effect: { kind: 'shard', energy: 'earth' } }),
-          makeCard({ id: `${ownerPrefix}-c10`, name: '雷火', cardClass: 'COMMON', element: null, cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 50, bonusText: 'F4/T4で+50ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 40 damage. Enhanced with shared field.', spriteKey: 'sparkHit', effect: { kind: 'damage', amount: 40 } }),
-          makeCard({ id: `${ownerPrefix}-c11`, name: 'Mega Flame', cardClass: 'TYPE', element: 'fire', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 80 damage. Consume Fire 3.', spriteKey: 'flameHit', effect: { kind: 'damage', amount: 80 }, requiredAttackType: 'fire' }),
-          makeCard({ id: `${ownerPrefix}-c12`, name: 'Storm Nova', cardClass: 'TYPE', element: 'thunder', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 30, bonusText: 'T5/F2で+30ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 45 damage. Enhance and consume Thunder 2.', spriteKey: 'sparkHit', effect: { kind: 'damage', amount: 45 }, requiredAttackType: 'thunder' }),
+          makeCard({ id: 'atk_fire_common_punch', asset: 'cards.atk_fire_common_punch', name: 'Fire Jab', category: 'atk', cardClass: 'COMMON', element: 'fire', scope: 'common', cost: 2, requirement: { fire: 1, thunder: 0, earth: 0 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: 22 } }),
+          makeCard({ id: 'atk_thunder_common_punch', asset: 'cards.atk_thunder_common_punch', name: 'Bolt Jab', category: 'atk', cardClass: 'COMMON', element: 'thunder', scope: 'common', cost: 2, requirement: { fire: 0, thunder: 1, earth: 0 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
+          makeCard({ id: 'atk_earth_common_punch', asset: 'cards.atk_earth_common_punch', name: 'Root Jab', category: 'atk', cardClass: 'COMMON', element: 'earth', scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 1 }, description: 'Deal 22 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.common } }),
+          makeCard({ id: 'atk_fire_beast_magmaPunch', asset: 'cards.atk_fire_beast_magmaPunch', name: 'Flame Burst', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 2, thunder: 0, earth: 0 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'fire' }),
+          makeCard({ id: 'atk_thunder_beast_boltBurst', asset: 'cards.atk_thunder_beast_boltBurst', name: 'Thunder Burst', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'thunder' }),
+          makeCard({ id: 'atk_earth_beast_rootBurst', asset: 'cards.atk_earth_beast_rootBurst', name: 'Earth Burst', category: 'atk', cardClass: 'TYPE', element: 'earth', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 0, earth: 2 }, description: 'Deal 30 damage to one enemy.', effect: { kind: 'damage', amount: CONFIG.damage.type }, requiredAttackType: 'earth' }),
+          makeCard({ id: 'sup_fire_common_shard', asset: 'cards.sup_fire_common_shard', name: 'Fire Shard', category: 'sup', cardClass: 'SHARD', element: 'fire', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Fire Energy.', effect: { kind: 'shard', energy: 'fire' } }),
+          makeCard({ id: 'sup_thunder_common_shard', asset: 'cards.sup_thunder_common_shard', name: 'Thunder Shard', category: 'sup', cardClass: 'SHARD', element: 'thunder', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', effect: { kind: 'shard', energy: 'thunder' } }),
+          makeCard({ id: 'sup_earth_common_shard', asset: 'cards.sup_earth_common_shard', name: 'Earth Shard', category: 'sup', cardClass: 'SHARD', element: 'earth', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', effect: { kind: 'shard', energy: 'earth' } }),
+          makeCard({ id: 'atk_neutral_common_raiKa', asset: 'cards.atk_neutral_common_raiKa', name: '雷火', category: 'atk', cardClass: 'COMMON', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 50, bonusText: 'F4/T4で+50ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 40 damage. Enhanced with shared field.', effect: { kind: 'damage', amount: 40 } }),
+          makeCard({ id: 'atk_fire_beast_megaFlame', asset: 'cards.atk_fire_beast_megaFlame', name: 'Mega Flame', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 80 damage. Consume Fire 3.', effect: { kind: 'damage', amount: 80 }, requiredAttackType: 'fire' }),
+          makeCard({ id: 'atk_thunder_beast_stormNova', asset: 'cards.atk_thunder_beast_stormNova', name: 'Storm Nova', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 30, bonusText: 'T5/F2で+30ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 45 damage. Enhance and consume Thunder 2.', effect: { kind: 'damage', amount: 45 }, requiredAttackType: 'thunder' }),
         ];
         return shuffle(set);
       }
@@ -355,6 +410,8 @@
       function isAttackTypeMatch(card, actor) {
         if (!card || !actor) return true;
         if (card.type !== 'TYPE') return true;
+        if (card.scope === 'common') return true;
+        if (card.scope && actor.type && card.scope !== actor.type) return false;
         return card.requiredAttackType === actor.attackType;
       }
 
@@ -912,22 +969,6 @@
         checkWinCondition();
       }
 
-      function createImageRef(key, src) {
-        const image = new Image();
-        const ref = { key, src, image, ok: false };
-        image.onload = () => { ref.ok = true; };
-        image.onerror = () => { ref.ok = false; };
-        image.src = src;
-        return ref;
-      }
-
-      function loadAssets() {
-        const list = Object.values(ASSETS).flatMap((group) => Object.entries(group));
-        list.forEach(([key, src]) => {
-          gameState.imageStore[key] = createImageRef(key, src);
-        });
-      }
-
       function drawPanel(x, y, width, height) {
         ctx.fillStyle = CONFIG.colors.panel;
         ctx.fillRect(x, y, width, height);
@@ -957,23 +998,6 @@
           action,
           enabled
         });
-      }
-
-      function drawAssetOrFallback(key, x, y, w, h) {
-        const ref = gameState.imageStore[key];
-        if (ref && ref.ok) {
-          ctx.drawImage(ref.image, x, y, w, h);
-          return;
-        }
-
-        ctx.fillStyle = '#314d7f';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#6c8cd0';
-        ctx.strokeRect(x, y, w, h);
-        ctx.fillStyle = '#d6e4ff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(key, x + w / 2, y + h / 2 + 4);
       }
 
       function drawElementPill(element, x, y, value, max) {
@@ -1048,7 +1072,14 @@
           ctx.strokeRect(x + 2, y + 2, CONFIG.monsterCard.width - 4, CONFIG.monsterCard.height - 4);
         }
 
-        drawAssetOrFallback(monster.spriteKey, x + 12, y + 10, CONFIG.monsterCard.iconSize, CONFIG.monsterCard.iconSize);
+        drawImageOrFallback(
+          createImage(monster.asset),
+          x + 12,
+          y + 10,
+          CONFIG.monsterCard.iconSize,
+          CONFIG.monsterCard.iconSize,
+          monster.id
+        );
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1163,7 +1194,7 @@
           ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
         }
 
-        drawAssetOrFallback(card.spriteKey, dx + 10, dy + 8, width - 20, 70);
+        drawImageOrFallback(createImage(card.asset), dx + 10, dy + 8, width - 20, 70, card.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1245,7 +1276,14 @@
 
         const iconX = CONFIG.enemyHeader.x + 10;
         const iconY = CONFIG.enemyHeader.y + 7;
-        drawAssetOrFallback('enemyEmber', iconX, iconY, CONFIG.enemyHeader.iconSize, CONFIG.enemyHeader.iconSize);
+        drawImageOrFallback(
+          createImage('monsters.enemy_beast_bear'),
+          iconX,
+          iconY,
+          CONFIG.enemyHeader.iconSize,
+          CONFIG.enemyHeader.iconSize,
+          'enemy'
+        );
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
@@ -1534,9 +1572,9 @@ function drawLogOverlay() {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
           monsters: [
-            makeMonster('p1', 'Ember Cub', 'fire', 'ember'),
-            makeMonster('p2', 'Bolt Pup', 'thunder', 'spark'),
-            makeMonster('p3', 'Root Pal', 'earth', 'moss'),
+            makeMonster('p1', 'Ember Cub', 'fire', 'beast', 'monsters.beast_bear'),
+            makeMonster('p2', 'Bolt Pup', 'thunder', 'beast', 'monsters.thunder_wolf'),
+            makeMonster('p3', 'Root Pal', 'earth', 'beast', 'monsters.earth_turtle'),
           ],
           hand: [],
           deck: createDeck('p'),
@@ -1547,9 +1585,9 @@ function drawLogOverlay() {
           guts: CONFIG.guts.start,
           maxGuts: CONFIG.guts.max,
           monsters: [
-            makeMonster('e1', 'Raider Ember', 'fire', 'enemyEmber'),
-            makeMonster('e2', 'Raider Bolt', 'thunder', 'enemySpark'),
-            makeMonster('e3', 'Raider Root', 'earth', 'enemyMoss'),
+            makeMonster('e1', 'Raider Ember', 'fire', 'beast', 'monsters.enemy_beast_bear'),
+            makeMonster('e2', 'Raider Bolt', 'thunder', 'beast', 'monsters.enemy_thunder_wolf'),
+            makeMonster('e3', 'Raider Root', 'earth', 'beast', 'monsters.enemy_earth_turtle'),
           ],
           hand: [],
           deck: createDeck('e'),
@@ -1569,7 +1607,6 @@ function drawLogOverlay() {
       }
 
       function boot() {
-        loadAssets();
         canvas.addEventListener('click', onCanvasClick);
         canvas.addEventListener('mousemove', onMouseMove);
         canvas.addEventListener('wheel', onWheel, { passive: false });
