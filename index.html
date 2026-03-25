@@ -28,48 +28,7 @@
 <body>
   <canvas id="game" width="1240" height="780"></canvas>
   <script>
-    // Assets expected under /assets (single flat folder, no subfolders required).
-    const TEXT = {
-      title: "モンスターカードバトル MVP",
-      startButton: "開始",
-      restartButton: "もう一度",
-      phaseStart: "開始",
-      phasePlaying: "バトル中",
-      phaseGameover: "終了",
-      turnPlayer: "あなたのターン",
-      turnEnemy: "敵のターン",
-      panelEnemy: "敵モンスター",
-      panelPlayer: "味方モンスター",
-      panelHand: "手札 (5枚)",
-      panelDetail: "カード詳細",
-      panelResource: "リソース",
-      panelLog: "ログ",
-      selectHintCard: "手札を選択してください",
-      selectHintTarget: "攻撃先を選択してください",
-      common: "通常",
-      type: "属性",
-      shard: "欠片",
-      guts: "ガッツ",
-      energy: "属性エネルギー",
-      hp: "HP",
-      winnerPlayer: "勝利！敵を全滅させました",
-      winnerEnemy: "敗北…味方が全滅しました",
-      logBattleStart: "バトル開始",
-      logPlayerTurn: "あなたのターン開始",
-      logEnemyTurn: "敵のターン開始",
-      logNeedResource: "このカードは使用条件を満たしていません",
-      logNeedTarget: "攻撃対象を選んでください",
-      logDefeated: "{name} は倒れた",
-      logAttack: "{actor} が {target} に {damage} ダメージ",
-      logShard: "{owner} が {element} 欠片を使い ガッツ+1 / {element}エネルギー+1",
-      ownerPlayer: "あなた",
-      ownerEnemy: "敵",
-      elementFire: "炎",
-      elementThunder: "雷",
-      elementEarth: "土",
-      missingImage: "画像なし"
-    };
-
+    (() => {
     const CONFIG = {
       w: 1240,
       h: 780,
@@ -111,6 +70,50 @@
         playerGuts: 'PLAYER TURN / GUTS PHASE',
         enemyAttack: 'ENEMY TURN / ATTACK PHASE',
         enemyGuts: 'ENEMY TURN / GUTS PHASE',
+      },
+      button: {
+        cancel: 'Cancel',
+        convert: 'Convert',
+        endAttack: 'End Attack Phase',
+        finishTurn: 'End Turn',
+        log: 'Log',
+        closeLog: 'Close Log',
+      },
+      panel: {
+        enemyHand: 'Enemy Hand (Visible)',
+        playerHand: 'Player Hand',
+        contextTitle: 'Context / Detail',
+        fieldTitle: 'Field Resources',
+        logTitle: 'Battle Log',
+      },
+      msg: {
+        battleStart: 'Battle started.',
+        drawRecover: '{side} recovered +{gain} Guts in draw phase.',
+        attackStart: '{side} attack phase started.',
+        enemyConvert: 'Enemy converted {n} cards in guts phase (+{n} Guts).',
+        playerConvert: 'Player converted {n} cards in guts phase (+{n} Guts).',
+        convertEnergy: '{side} gained +{gain} {element} energy from conversion.',
+        selectCard: '{card} selected. Choose actor.',
+        selectActor: 'Actor selected. Choose target.',
+        cancelSelection: 'Selection canceled.',
+        invalidCard: 'Card is not playable: {reason}',
+        invalidTarget: 'Invalid target.',
+        cardUsedDamage: '{side} used {card} with {actor} on {target} for {amount}.',
+        cardUsedShard: '{side} used {card} ({actor} -> {target}) for +1 Guts / +1 {energy} Energy.',
+        defeated: '{name} was defeated.',
+        win: '{side} wins.',
+      },
+      reason: {
+        noCard: 'No card selected.',
+        shardAlways: 'SHARD is always playable.',
+        needGuts: 'Not enough Guts ({have}/{need}).',
+        needEnergy: 'Not enough {element} energy ({have}/{need}).',
+        needActor: 'Select a living actor monster.',
+        needTarget: 'Select a valid target monster.',
+        waitAttackPhase: 'Card can be used only in attack phase.',
+      },
+      state: {
+        none: 'none',
       },
       button: {
         cancel: 'Cancel',
@@ -432,6 +435,24 @@
         gameState.winner = enemyAlive === 0 ? 'player' : 'enemy';
         appendLog(formatText(TEXT.msg.win, { side: capitalize(gameState.winner) }));
       }
+      if (gameState.selectedCardId === cardId) {
+        cancelSelection(TEXT.msg.cancelSelection);
+        return;
+      }
+      const card = getCardFromHand(gameState.player, cardId);
+      const usability = getCardUsability('player', card);
+      if (!usability.playable) {
+        gameState.ui.invalidReason = usability.reason;
+        appendLog(formatText(TEXT.msg.invalidCard, { reason: usability.reason }));
+        clearSelection();
+        return;
+      }
+      gameState.selectedCardId = cardId;
+      gameState.selectionStep = 'selectActor';
+      gameState.selectedActorId = null;
+      gameState.selectedTargetId = null;
+      gameState.ui.invalidReason = TEXT.state.none;
+      appendLog(formatText(TEXT.msg.selectCard, { card: card.name }));
     }
 
     function beginPlayerCardSelection(cardId) {
@@ -1022,9 +1043,14 @@
       requestAnimationFrame(loop);
     }
 
-    canvas.addEventListener("click", handleClick);
-    preloadImages();
-    requestAnimationFrame(loop);
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    start();
+    })();
   </script>
 </body>
 </html>
