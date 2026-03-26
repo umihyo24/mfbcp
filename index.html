@@ -106,6 +106,22 @@
           playerUsed: 'Player used {card}',
           enemyUsed: 'Enemy used {card}',
           usedBy: '{actor} used {card}',
+          inspectHint: 'Hover or select a card to inspect.',
+          usableNow: 'Usable now',
+          unusable: 'Unusable: {reason}',
+          actorHintNeedSelection: 'Select actor to validate TYPE requirement.',
+          actorHintValid: 'Actor selectable',
+          actorHintInvalid: 'Actor not selectable: {reason}',
+          actorHintNoActor: 'No valid actor',
+          actorSummary: 'Valid Actors: {count} ({list})',
+          targetSummary: 'Valid Targets: {count} ({list})',
+          targetHintNoTarget: 'No valid target',
+          effectDamage: 'Damage card',
+          effectShard: 'Shard conversion: +{gain} Guts / +{gain} {energy}',
+          effectOther: 'Effect: {kind}',
+          damagePreview: 'Damage Preview: {damage}',
+          enhanceActive: 'Enhance: ACTIVE (+{bonus})',
+          enhanceInactive: 'Enhance: inactive (+{bonus})',
         },
         msg: {
           battleStart: 'Battle started.',
@@ -211,7 +227,23 @@
             message: '',
             startedAt: 0,
             durationMs: 1200
-          }
+          },
+          cardPreview: {
+            visible: false,
+            cardId: null,
+            actorId: null,
+            playable: false,
+            reason: TEXT.state.none,
+            costText: '',
+            requirementText: '',
+            actorHint: '',
+            targetHint: '',
+            effectText: '',
+            enhanceText: '',
+            validActorIds: [],
+            validTargetIds: [],
+            damagePreview: 0,
+          },
         },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
@@ -617,6 +649,95 @@
         }
 
         return { playable: true, reason: '' };
+      }
+
+      function getCardPreviewEnergyText(triplet) {
+        const safe = triplet || { fire: 0, thunder: 0, earth: 0 };
+        return `F${safe.fire ?? 0} / T${safe.thunder ?? 0} / E${safe.earth ?? 0}`;
+      }
+
+      function formatIdList(ids) {
+        if (!Array.isArray(ids) || ids.length === 0) return TEXT.state.none;
+        return ids.join(', ');
+      }
+
+      function buildCardPreviewState(state, side, card, actorId = null) {
+        const empty = {
+          visible: false,
+          cardId: null,
+          actorId: null,
+          playable: false,
+          reason: TEXT.state.none,
+          costText: '',
+          requirementText: '',
+          actorHint: '',
+          targetHint: '',
+          effectText: '',
+          enhanceText: '',
+          validActorIds: [],
+          validTargetIds: [],
+          damagePreview: 0,
+        };
+
+        if (!state || !card || !side) return empty;
+        const sideData = side === 'enemy' ? state.enemy : state.player;
+        if (!sideData) return empty;
+        const cardInHand = getCardFromHand(sideData, card.id);
+        if (!cardInHand) return empty;
+
+        const selectedActor = getMonster(sideData, actorId);
+        const usability = getCardUsability(side, cardInHand, selectedActor || null);
+        const validActorIds = getValidActorIds(side).filter((id) => (
+          getActorSelectionValidation(side, id, cardInHand).valid
+        ));
+        const validTargetIds = getValidTargetIds(side, cardInHand);
+        const actorValidation = actorId
+          ? getActorSelectionValidation(side, actorId, cardInHand)
+          : { valid: false, reason: TEXT.reason.needActor };
+        const enhanced = isCardEnhanced(cardInHand);
+        const damagePreview = cardInHand.effect?.kind === 'damage' ? getCardFinalDamage(cardInHand) : 0;
+
+        let effectText = formatText(TEXT.preview.effectOther, { kind: cardInHand.effect?.kind ?? 'none' });
+        if (cardInHand.effect?.kind === 'damage') {
+          effectText = TEXT.preview.effectDamage;
+        } else if (cardInHand.effect?.kind === 'shard') {
+          effectText = formatText(TEXT.preview.effectShard, {
+            gain: CONFIG.energy.shardGain,
+            energy: capitalize(cardInHand.effect.energy || 'unknown'),
+          });
+        }
+
+        const actorHint = actorId
+          ? (actorValidation.valid
+            ? TEXT.preview.actorHintValid
+            : formatText(TEXT.preview.actorHintInvalid, { reason: actorValidation.reason }))
+          : TEXT.preview.actorHintNeedSelection;
+        const targetHint = validTargetIds.length > 0
+          ? formatText(TEXT.preview.targetSummary, {
+            count: validTargetIds.length,
+            list: formatIdList(validTargetIds),
+          })
+          : TEXT.preview.targetHintNoTarget;
+
+        return {
+          visible: true,
+          cardId: cardInHand.id,
+          actorId: actorId || null,
+          playable: usability.playable,
+          reason: usability.reason || TEXT.state.none,
+          costText: `Cost ${cardInHand.cost}`,
+          requirementText: `Requirement: ${getCardPreviewEnergyText(cardInHand.requirement)}`,
+          actorHint,
+          targetHint,
+          effectText,
+          enhanceText: formatText(
+            enhanced ? TEXT.preview.enhanceActive : TEXT.preview.enhanceInactive,
+            { bonus: cardInHand.enhance?.bonusDamage ?? 0 }
+          ),
+          validActorIds,
+          validTargetIds,
+          damagePreview,
+        };
       }
 
       function canMonsterAct(monster) {
@@ -1105,7 +1226,16 @@
         }
 
         updateEffectPreview(now);
+        updateCardPreviewState();
         checkWinCondition();
+      }
+
+      function updateCardPreviewState() {
+        const selectedCard = getCardFromHand(gameState.player, gameState.selectedCardId);
+        const hoveredCard = getCardFromHand(gameState.player, gameState.hoveredCardId);
+        const previewCard = selectedCard || hoveredCard;
+        const previewActorId = gameState.selectedActorId || null;
+        gameState.ui.cardPreview = buildCardPreviewState(gameState, 'player', previewCard, previewActorId);
       }
 
       function drawPanel(x, y, width, height) {
@@ -1583,13 +1713,13 @@
         ctx.font = 'bold 24px Arial';
         ctx.fillText(TEXT.panel.contextTitle, CONFIG.contextPanel.x + 12, CONFIG.contextPanel.y + 34);
 
-        const card = getSelectedCard() || getCardFromHand(gameState.player, gameState.hoveredCardId);
+        const preview = gameState.ui.cardPreview;
         let y = CONFIG.contextPanel.y + 62;
 
-        if (!card) {
+        if (!preview.visible) {
           y = drawEmptyContextHint(y);
         } else {
-          y = drawContextCardDetails(card, y);
+          y = drawContextCardPreview(preview, y);
         }
 
         y += 28;
@@ -1611,66 +1741,54 @@
       function drawEmptyContextHint(startY) {
         ctx.font = '17px Arial';
         ctx.fillStyle = CONFIG.colors.muted;
-        ctx.fillText('Hover or select a card to inspect.', CONFIG.contextPanel.x + 12, startY);
+        ctx.fillText(TEXT.preview.inspectHint, CONFIG.contextPanel.x + 12, startY);
         return startY;
       }
 
-      function prepareContextCardDetails(card) {
-        const selectedActor = getMonster(gameState.player, gameState.selectedActorId);
-        return {
-          card,
-          usability: getCardUsability('player', card, selectedActor),
-          enhanced: isCardEnhanced(card),
-          baseDamage: card.effect.kind === 'damage' ? card.effect.amount : 0,
-          enhanceCondition: card.enhance?.condition ?? { fire: 0, thunder: 0, earth: 0 },
-          enhanceBonus: card.enhance?.bonusDamage ?? 0,
-          consume: card.consume ?? { fire: 0, thunder: 0, earth: 0 },
-          descriptionLines: wrapText(card.description, CONFIG.contextPanel.width - 24).slice(0, 2),
-        };
-      }
-
-      function drawContextCardDetails(card, startY) {
-        const details = prepareContextCardDetails(card);
+      function drawContextCardPreview(preview, startY) {
+        const card = findCardById(preview.cardId);
         let y = startY;
 
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 18px Arial';
-        ctx.fillText(details.card.name, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(card?.name || preview.cardId || TEXT.state.none, CONFIG.contextPanel.x + 12, y);
         y += 24;
 
         ctx.font = '15px Arial';
-        ctx.fillText(`Type: ${details.card.type} / Cost: ${details.card.cost}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(`Type: ${card?.type || TEXT.state.none} / ${preview.costText}`, CONFIG.contextPanel.x + 12, y);
         y += 20;
-        if (details.card.type === 'TYPE' && details.card.requiredAttackType) {
-          ctx.fillText(`Required ATK Type: ${details.card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
+        if (card?.type === 'TYPE' && card.requiredAttackType) {
+          ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
           y += 20;
         }
 
-        ctx.fillText(`Base: ${details.baseDamage}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(preview.requirementText, CONFIG.contextPanel.x + 12, y);
         y += 20;
-        ctx.fillText(`Requirement: F${details.card.requirement.fire} / T${details.card.requirement.thunder} / E${details.card.requirement.earth}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(preview.effectText, CONFIG.contextPanel.x + 12, y);
         y += 20;
-        ctx.fillText(`Enhance: F${details.enhanceCondition.fire} / T${details.enhanceCondition.thunder} / E${details.enhanceCondition.earth}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(preview.enhanceText, CONFIG.contextPanel.x + 12, y);
         y += 20;
-        ctx.fillText(`Bonus: +${details.enhanceBonus}`, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(`Consume: F${details.consume.fire} / T${details.consume.thunder} / E${details.consume.earth}`, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(`Current: ${details.enhanced ? 'ENHANCED' : 'enhance inactive'}`, CONFIG.contextPanel.x + 12, y);
-        y += 22;
-
-        details.descriptionLines.forEach((line) => {
-          ctx.fillText(line, CONFIG.contextPanel.x + 12, y);
-          y += 18;
-        });
-
-        y += 4;
-        ctx.fillStyle = details.usability.playable ? '#8df4a1' : '#ff9ea1';
         ctx.fillText(
-          details.usability.playable ? 'Usable now' : `Unusable: ${details.usability.reason}`,
+          formatText(TEXT.preview.actorSummary, {
+            count: preview.validActorIds.length,
+            list: formatIdList(preview.validActorIds)
+          }),
           CONFIG.contextPanel.x + 12,
           y
         );
+        y += 20;
+        ctx.fillText(preview.actorHint, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(preview.targetHint, CONFIG.contextPanel.x + 12, y);
+        y += 22;
+        if (card?.effect?.kind === 'damage') {
+          ctx.fillText(formatText(TEXT.preview.damagePreview, { damage: preview.damagePreview }), CONFIG.contextPanel.x + 12, y);
+          y += 20;
+        }
+        ctx.fillStyle = preview.playable ? '#8df4a1' : '#ff9ea1';
+        ctx.fillText(preview.playable
+          ? TEXT.preview.usableNow
+          : formatText(TEXT.preview.unusable, { reason: preview.reason }), CONFIG.contextPanel.x + 12, y);
         return y;
       }
 
