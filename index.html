@@ -56,6 +56,8 @@
         enemyMiniCard: { width: 62, height: 88, gap: 6 },
         button: { width: 132, height: 32, gap: 10 },
         logOverlay: { x: 130, y: 80, width: 940, height: 560 },
+        turnFlash: { durationMs: 900, y: 120, height: 42 },
+        battleFeedback: { durationMs: 1300, y: 734, height: 30 },
         colors: {
           bg: '#1f3564',
           panel: '#243f72',
@@ -106,6 +108,38 @@
           playerUsed: 'Player used {card}',
           enemyUsed: 'Enemy used {card}',
           usedBy: '{actor} used {card}',
+          inspectHint: 'Hover or select a card to inspect.',
+          usableNow: 'Usable now',
+          unusable: 'Unusable: {reason}',
+          actorHintNeedSelection: 'Select actor to validate TYPE requirement.',
+          actorHintValid: 'Actor selectable',
+          actorHintInvalid: 'Actor not selectable: {reason}',
+          actorHintNoActor: 'No valid actor',
+          actorSummary: 'Valid Actors: {count} ({list})',
+          targetSummary: 'Valid Targets: {count} ({list})',
+          targetHintNoTarget: 'No valid target',
+          effectDamage: 'Damage card',
+          effectShard: 'Shard conversion: +{gain} Guts / +{gain} {energy}',
+          effectOther: 'Effect: {kind}',
+          damagePreview: 'Damage Preview: {damage}',
+          enhanceActive: 'Enhance: ACTIVE (+{bonus})',
+          enhanceInactive: 'Enhance: inactive (+{bonus})',
+        },
+        feedback: {
+          invalidCard: 'Card not usable',
+          invalidActor: 'Invalid actor',
+          invalidTarget: 'Invalid target',
+          cardUsed: 'Card used',
+          shardUsed: 'Shard converted',
+          turnChange: '{side} turn',
+          phaseAttack: 'Attack phase',
+          phaseGuts: 'Guts phase',
+        },
+        turnFlash: {
+          playerTurn: 'PLAYER TURN',
+          enemyTurn: 'ENEMY TURN',
+          attackPhase: 'ATTACK PHASE',
+          gutsPhase: 'GUTS PHASE',
         },
         msg: {
           battleStart: 'Battle started.',
@@ -211,7 +245,33 @@
             message: '',
             startedAt: 0,
             durationMs: 1200
-          }
+          },
+          cardPreview: {
+            visible: false,
+            cardId: null,
+            actorId: null,
+            playable: false,
+            reason: TEXT.state.none,
+            costText: '',
+            requirementText: '',
+            actorHint: '',
+            targetHint: '',
+            effectText: '',
+            enhanceText: '',
+            validActorIds: [],
+            validTargetIds: [],
+            damagePreview: 0,
+          },
+          battleFeedback: {
+            text: '',
+            timer: 0,
+            duration: 0,
+          },
+          turnFlash: {
+            text: '',
+            timer: 0,
+            duration: 0,
+          },
         },
         uiRects: { playerCards: [], monsters: [], buttons: [] },
         temp: { gutsSelectedCardIds: [] },
@@ -619,6 +679,95 @@
         return { playable: true, reason: '' };
       }
 
+      function getCardPreviewEnergyText(triplet) {
+        const safe = triplet || { fire: 0, thunder: 0, earth: 0 };
+        return `F${safe.fire ?? 0} / T${safe.thunder ?? 0} / E${safe.earth ?? 0}`;
+      }
+
+      function formatIdList(ids) {
+        if (!Array.isArray(ids) || ids.length === 0) return TEXT.state.none;
+        return ids.join(', ');
+      }
+
+      function buildCardPreviewState(state, side, card, actorId = null) {
+        const empty = {
+          visible: false,
+          cardId: null,
+          actorId: null,
+          playable: false,
+          reason: TEXT.state.none,
+          costText: '',
+          requirementText: '',
+          actorHint: '',
+          targetHint: '',
+          effectText: '',
+          enhanceText: '',
+          validActorIds: [],
+          validTargetIds: [],
+          damagePreview: 0,
+        };
+
+        if (!state || !card || !side) return empty;
+        const sideData = side === 'enemy' ? state.enemy : state.player;
+        if (!sideData) return empty;
+        const cardInHand = getCardFromHand(sideData, card.id);
+        if (!cardInHand) return empty;
+
+        const selectedActor = getMonster(sideData, actorId);
+        const usability = getCardUsability(side, cardInHand, selectedActor || null);
+        const validActorIds = getValidActorIds(side).filter((id) => (
+          getActorSelectionValidation(side, id, cardInHand).valid
+        ));
+        const validTargetIds = getValidTargetIds(side, cardInHand);
+        const actorValidation = actorId
+          ? getActorSelectionValidation(side, actorId, cardInHand)
+          : { valid: false, reason: TEXT.reason.needActor };
+        const enhanced = isCardEnhanced(cardInHand);
+        const damagePreview = cardInHand.effect?.kind === 'damage' ? getCardFinalDamage(cardInHand) : 0;
+
+        let effectText = formatText(TEXT.preview.effectOther, { kind: cardInHand.effect?.kind ?? 'none' });
+        if (cardInHand.effect?.kind === 'damage') {
+          effectText = TEXT.preview.effectDamage;
+        } else if (cardInHand.effect?.kind === 'shard') {
+          effectText = formatText(TEXT.preview.effectShard, {
+            gain: CONFIG.energy.shardGain,
+            energy: capitalize(cardInHand.effect.energy || 'unknown'),
+          });
+        }
+
+        const actorHint = actorId
+          ? (actorValidation.valid
+            ? TEXT.preview.actorHintValid
+            : formatText(TEXT.preview.actorHintInvalid, { reason: actorValidation.reason }))
+          : TEXT.preview.actorHintNeedSelection;
+        const targetHint = validTargetIds.length > 0
+          ? formatText(TEXT.preview.targetSummary, {
+            count: validTargetIds.length,
+            list: formatIdList(validTargetIds),
+          })
+          : TEXT.preview.targetHintNoTarget;
+
+        return {
+          visible: true,
+          cardId: cardInHand.id,
+          actorId: actorId || null,
+          playable: usability.playable,
+          reason: usability.reason || TEXT.state.none,
+          costText: `Cost ${cardInHand.cost}`,
+          requirementText: `Requirement: ${getCardPreviewEnergyText(cardInHand.requirement)}`,
+          actorHint,
+          targetHint,
+          effectText,
+          enhanceText: formatText(
+            enhanced ? TEXT.preview.enhanceActive : TEXT.preview.enhanceInactive,
+            { bonus: cardInHand.enhance?.bonusDamage ?? 0 }
+          ),
+          validActorIds,
+          validTargetIds,
+          damagePreview,
+        };
+      }
+
       function canMonsterAct(monster) {
         return monster.alive && !monster.hasActedThisTurn;
       }
@@ -813,6 +962,18 @@
         if (reasonText) appendLog(reasonText);
       }
 
+      function setTurnFlash(text, duration) {
+        gameState.ui.turnFlash.text = text || '';
+        gameState.ui.turnFlash.timer = performance.now() + duration;
+        gameState.ui.turnFlash.duration = duration;
+      }
+
+      function setBattleFeedback(text, duration) {
+        gameState.ui.battleFeedback.text = text || '';
+        gameState.ui.battleFeedback.timer = performance.now() + duration;
+        gameState.ui.battleFeedback.duration = duration;
+      }
+
       function startTurn(side) {
         gameState.turnSide = side;
         gameState.turnPhase = 'draw';
@@ -822,6 +983,8 @@
         gameState.temp.gutsSelectedCardIds = [];
         if (side === 'enemy') setEnemyMessage('カードを引くぜ！');
         else setEnemyMessage(TEXT.state.enemyIdleMessage);
+        setTurnFlash(side === 'enemy' ? TEXT.turnFlash.enemyTurn : TEXT.turnFlash.playerTurn, CONFIG.turnFlash.durationMs);
+        setBattleFeedback(formatText(TEXT.feedback.turnChange, { side: capitalize(side) }), CONFIG.battleFeedback.durationMs);
         runDrawPhase(side);
       }
 
@@ -830,6 +993,8 @@
         recoverDrawPhaseGuts(side);
         gameState.turnPhase = 'attack';
         appendLog(formatText(TEXT.msg.attackStart, { side: capitalize(side) }));
+        setTurnFlash(TEXT.turnFlash.attackPhase, CONFIG.turnFlash.durationMs);
+        setBattleFeedback(TEXT.feedback.phaseAttack, CONFIG.battleFeedback.durationMs);
         if (side === 'enemy') {
           setEnemyMessage('攻撃するぜ！');
           gameState.enemyActionTimer = performance.now() + 450;
@@ -866,6 +1031,7 @@
         if (gameState.turnPhase !== 'attack') {
           gameState.ui.invalidReason = TEXT.reason.waitAttackPhase;
           appendLog(formatText(TEXT.msg.invalidCard, { reason: TEXT.reason.waitAttackPhase }));
+          setBattleFeedback(TEXT.feedback.invalidCard, CONFIG.battleFeedback.durationMs);
           return;
         }
 
@@ -880,6 +1046,7 @@
         if (!usability.playable) {
           gameState.ui.invalidReason = usability.reason;
           appendLog(formatText(TEXT.msg.invalidCard, { reason: usability.reason }));
+          setBattleFeedback(TEXT.feedback.invalidCard, CONFIG.battleFeedback.durationMs);
           clearSelection();
           return;
         }
@@ -899,6 +1066,7 @@
         const validation = getActorSelectionValidation('player', monsterId, card);
         if (!validation.valid) {
           gameState.ui.invalidReason = validation.reason;
+          setBattleFeedback(TEXT.feedback.invalidActor, CONFIG.battleFeedback.durationMs);
           return;
         }
 
@@ -919,6 +1087,7 @@
         if (!getValidTargetIds('player', card).includes(monsterId)) {
           gameState.ui.invalidReason = TEXT.reason.needTarget;
           appendLog(TEXT.msg.invalidTarget);
+          setBattleFeedback(TEXT.feedback.invalidTarget, CONFIG.battleFeedback.durationMs);
           return;
         }
 
@@ -928,6 +1097,10 @@
         if (applied) {
           if (card.effect.kind === 'damage') {
             markMonsterActed('player', gameState.selectedActorId);
+            setBattleFeedback(TEXT.feedback.cardUsed, CONFIG.battleFeedback.durationMs);
+          }
+          if (card.effect.kind === 'shard') {
+            setBattleFeedback(TEXT.feedback.shardUsed, CONFIG.battleFeedback.durationMs);
           }
           moveCardToDiscard('player', card.id);
         }
@@ -939,6 +1112,8 @@
       function endPlayerAttackPhase() {
         gameState.turnPhase = 'guts';
         gameState.temp.gutsSelectedCardIds = [];
+        setTurnFlash(TEXT.turnFlash.gutsPhase, CONFIG.turnFlash.durationMs);
+        setBattleFeedback(TEXT.feedback.phaseGuts, CONFIG.battleFeedback.durationMs);
         clearSelection();
       }
 
@@ -964,6 +1139,9 @@
           side === 'player' ? TEXT.msg.playerConvert : TEXT.msg.enemyConvert,
           { n: converted }
         ));
+        if (converted > 0) {
+          setBattleFeedback(TEXT.feedback.shardUsed, CONFIG.battleFeedback.durationMs);
+        }
       }
 
       function convertSelectedPlayerCards() {
@@ -1015,6 +1193,10 @@
         if (applied) {
           if (card.effect.kind === 'damage') {
             markMonsterActed('enemy', actorId);
+            setBattleFeedback(TEXT.feedback.cardUsed, CONFIG.battleFeedback.durationMs);
+          }
+          if (card.effect.kind === 'shard') {
+            setBattleFeedback(TEXT.feedback.shardUsed, CONFIG.battleFeedback.durationMs);
           }
           moveCardToDiscard('enemy', card.id);
           gameState.enemyActionsDone += 1;
@@ -1105,7 +1287,22 @@
         }
 
         updateEffectPreview(now);
+        updateCardPreviewState();
+        if (gameState.ui.turnFlash.timer <= now) {
+          gameState.ui.turnFlash.text = '';
+        }
+        if (gameState.ui.battleFeedback.timer <= now) {
+          gameState.ui.battleFeedback.text = '';
+        }
         checkWinCondition();
+      }
+
+      function updateCardPreviewState() {
+        const selectedCard = getCardFromHand(gameState.player, gameState.selectedCardId);
+        const hoveredCard = getCardFromHand(gameState.player, gameState.hoveredCardId);
+        const previewCard = selectedCard || hoveredCard;
+        const previewActorId = gameState.selectedActorId || null;
+        gameState.ui.cardPreview = buildCardPreviewState(gameState, 'player', previewCard, previewActorId);
       }
 
       function drawPanel(x, y, width, height) {
@@ -1366,105 +1563,6 @@
         }
       }
 
-      function drawEffectPreview() {
-        const preview = gameState.ui.effectPreview;
-        if (!preview.visible) return;
-
-        const panelW = 330;
-        const panelH = 400;
-        const panelX = preview.side === 'player' ? 120 : CONFIG.w - panelW - 120;
-        const panelY = Math.floor((CONFIG.h - panelH) / 2);
-
-        const card = findCardById(preview.cardId);
-        const cardName = preview.cardName || card?.name || 'Unknown Card';
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(6, 12, 22, 0.35)';
-        ctx.fillRect(0, 0, CONFIG.w, CONFIG.h);
-
-        ctx.fillStyle = 'rgba(22, 38, 70, 0.95)';
-        ctx.fillRect(panelX, panelY, panelW, panelH);
-        ctx.strokeStyle = '#9ad7ff';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(panelX, panelY, panelW, panelH);
-
-        ctx.shadowColor = 'rgba(130, 214, 255, 0.45)';
-        ctx.shadowBlur = 14;
-        ctx.strokeStyle = 'rgba(130, 214, 255, 0.85)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(panelX + 6, panelY + 6, panelW - 12, panelH - 12);
-        ctx.shadowBlur = 0;
-
-        drawAssetOrFallback(
-          card?.asset || preview.cardId,
-          panelX + 20,
-          panelY + 26,
-          panelW - 40,
-          220,
-          cardName
-        );
-
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 28px Arial';
-        ctx.fillText(cardName, panelX + 20, panelY + 280);
-
-        if (preview.actorName) {
-          ctx.font = '16px Arial';
-          ctx.fillStyle = '#cde1ff';
-          ctx.fillText(preview.actorName, panelX + 20, panelY + 310);
-        }
-
-        ctx.font = 'bold 22px Arial';
-        ctx.fillStyle = '#ffe08e';
-        ctx.fillText(preview.message || cardName, panelX + 20, panelY + 350);
-        ctx.restore();
-      }
-
-      function drawEnemyIconBox(x, y, width, height) {
-        drawPanel(x, y, width, height);
-        drawAssetOrFallback('monsters.enemy_beast_bear', x + 8, y + 8, width - 16, height - 16, 'enemy');
-      }
-
-      function drawMiniEnemyHand(x, y, width, height) {
-        drawPanel(x, y, width, height);
-        ctx.fillStyle = '#dfe9ff';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 13px Arial';
-        ctx.fillText('Enemy Hand', x + 10, y + 18);
-
-        const startX = x + 10;
-        const cardY = y + 26;
-        const maxVisible = Math.max(1, Math.floor((width - 20) / (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap)));
-        gameState.enemy.hand.slice(0, maxVisible).forEach((card, index) => {
-          const cardX = startX + index * (CONFIG.enemyMiniCard.width + CONFIG.enemyMiniCard.gap);
-          drawAssetOrFallback(
-            card.asset,
-            cardX,
-            cardY,
-            CONFIG.enemyMiniCard.width,
-            CONFIG.enemyMiniCard.height,
-            card.name
-          );
-          ctx.strokeStyle = '#86a4dc';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(cardX, cardY, CONFIG.enemyMiniCard.width, CONFIG.enemyMiniCard.height);
-        });
-      }
-
-      function drawEnemyInfoPanel(x, y, width, height) {
-        drawPanel(x, y, width, height);
-        const enemyDeckMax = gameState.enemy.deck.length + gameState.enemy.discard.length + gameState.enemy.hand.length;
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 17px Arial';
-        ctx.fillText(`Hand ×${gameState.enemy.hand.length}   Guts ${gameState.enemy.guts}`, x + 10, y + 34);
-        ctx.font = '13px Arial';
-        ctx.fillStyle = '#d7e4ff';
-        ctx.fillText(`Deck ${gameState.enemy.deck.length} / ${enemyDeckMax}`, x + 10, y + 58);
-        ctx.fillText(`Discard ${gameState.enemy.discard.length}`, x + 10, y + 78);
-      }
-
       function drawEnemyIconBox(x, y, width, height) {
         drawPanel(x, y, width, height);
         drawAssetOrFallback('monsters.enemy_beast_bear', x + 8, y + 8, width - 16, height - 16, 'enemy');
@@ -1612,26 +1710,38 @@
       }
 
       function drawEnemyHeader() {
+        const layout = getEnemyHeaderLayout();
         drawPanel(
-          CONFIG.enemyHeader.x,
-          CONFIG.enemyHeader.y,
-          CONFIG.enemyHeader.width,
-          CONFIG.enemyHeader.height
+          layout.panel.x,
+          layout.panel.y,
+          layout.panel.width,
+          layout.panel.height
         );
+        drawEnemyMessageBox(layout.message.x, layout.message.y, layout.message.width, layout.message.height);
+        drawEnemyIconBox(layout.icon.x, layout.icon.y, layout.icon.width, layout.icon.height);
+        drawMiniEnemyHand(layout.miniHand.x, layout.miniHand.y, layout.miniHand.width, layout.miniHand.height);
+        drawEnemyInfoPanel(layout.info.x, layout.info.y, layout.info.width, layout.info.height);
+      }
+
+      function getEnemyHeaderLayout() {
         const sections = CONFIG.enemyHeaderSections;
+        const panel = CONFIG.enemyHeader;
         const gap = sections.gap;
-        const innerX = CONFIG.enemyHeader.x + 10;
-        const innerY = CONFIG.enemyHeader.y + 10;
-        const innerH = CONFIG.enemyHeader.height - 20;
-        const infoW = sections.info;
+        const innerX = panel.x + 10;
+        const innerY = panel.y + 10;
+        const innerH = panel.height - 20;
         const messageW = sections.message;
         const iconW = sections.icon;
-        const miniW = CONFIG.enemyHeader.width - 20 - messageW - iconW - infoW - gap * 3;
+        const infoW = sections.info;
+        const miniW = panel.width - 20 - messageW - iconW - infoW - gap * 3;
 
-        drawEnemyMessageBox(innerX, innerY, messageW, innerH);
-        drawEnemyIconBox(innerX + messageW + gap, innerY, iconW, innerH);
-        drawMiniEnemyHand(innerX + messageW + gap + iconW + gap, innerY, miniW, innerH);
-        drawEnemyInfoPanel(innerX + messageW + gap + iconW + gap + miniW + gap, innerY, infoW, innerH);
+        return {
+          panel,
+          message: { x: innerX, y: innerY, width: messageW, height: innerH },
+          icon: { x: innerX + messageW + gap, y: innerY, width: iconW, height: innerH },
+          miniHand: { x: innerX + messageW + gap + iconW + gap, y: innerY, width: miniW, height: innerH },
+          info: { x: innerX + messageW + gap + iconW + gap + miniW + gap, y: innerY, width: infoW, height: innerH },
+        };
       }
 
       function getSelectedCard() {
@@ -1670,61 +1780,13 @@
         ctx.font = 'bold 24px Arial';
         ctx.fillText(TEXT.panel.contextTitle, CONFIG.contextPanel.x + 12, CONFIG.contextPanel.y + 34);
 
-        const card = getSelectedCard() || getCardFromHand(gameState.player, gameState.hoveredCardId);
+        const preview = gameState.ui.cardPreview;
         let y = CONFIG.contextPanel.y + 62;
 
-        if (!card) {
-          ctx.font = '17px Arial';
-          ctx.fillStyle = CONFIG.colors.muted;
-          ctx.fillText('Hover or select a card to inspect.', CONFIG.contextPanel.x + 12, y);
+        if (!preview.visible) {
+          y = drawEmptyContextHint(y);
         } else {
-          const selectedActor = getMonster(gameState.player, gameState.selectedActorId);
-          const usability = getCardUsability('player', card, selectedActor);
-          const enhanced = isCardEnhanced(card);
-          const baseDamage = card.effect.kind === 'damage' ? card.effect.amount : 0;
-          const enhanceCondition = card.enhance?.condition ?? { fire: 0, thunder: 0, earth: 0 };
-          const enhanceBonus = card.enhance?.bonusDamage ?? 0;
-          const consume = card.consume ?? { fire: 0, thunder: 0, earth: 0 };
-
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 18px Arial';
-          ctx.fillText(card.name, CONFIG.contextPanel.x + 12, y);
-          y += 24;
-
-          ctx.font = '15px Arial';
-          ctx.fillText(`Type: ${card.type} / Cost: ${card.cost}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          if (card.type === 'TYPE' && card.requiredAttackType) {
-            ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
-            y += 20;
-          }
-
-          ctx.fillText(`Base: ${baseDamage}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          ctx.fillText(`Requirement: F${card.requirement.fire} / T${card.requirement.thunder} / E${card.requirement.earth}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          ctx.fillText(`Enhance: F${enhanceCondition.fire} / T${enhanceCondition.thunder} / E${enhanceCondition.earth}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          ctx.fillText(`Bonus: +${enhanceBonus}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          ctx.fillText(`Consume: F${consume.fire} / T${consume.thunder} / E${consume.earth}`, CONFIG.contextPanel.x + 12, y);
-          y += 20;
-          ctx.fillText(`Current: ${enhanced ? 'ENHANCED' : 'enhance inactive'}`, CONFIG.contextPanel.x + 12, y);
-          y += 22;
-
-          const lines = wrapText(card.description, CONFIG.contextPanel.width - 24);
-          lines.slice(0, 2).forEach((line) => {
-            ctx.fillText(line, CONFIG.contextPanel.x + 12, y);
-            y += 18;
-          });
-
-          y += 4;
-          ctx.fillStyle = usability.playable ? '#8df4a1' : '#ff9ea1';
-          ctx.fillText(
-            usability.playable ? 'Usable now' : `Unusable: ${usability.reason}`,
-            CONFIG.contextPanel.x + 12,
-            y
-          );
+          y = drawContextCardPreview(preview, y);
         }
 
         y += 28;
@@ -1741,6 +1803,60 @@
           ctx.fillStyle = '#ffb8be';
           ctx.fillText(`Reason: ${gameState.ui.invalidReason}`, CONFIG.contextPanel.x + 12, y);
         }
+      }
+
+      function drawEmptyContextHint(startY) {
+        ctx.font = '17px Arial';
+        ctx.fillStyle = CONFIG.colors.muted;
+        ctx.fillText(TEXT.preview.inspectHint, CONFIG.contextPanel.x + 12, startY);
+        return startY;
+      }
+
+      function drawContextCardPreview(preview, startY) {
+        const card = findCardById(preview.cardId);
+        let y = startY;
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(card?.name || preview.cardId || TEXT.state.none, CONFIG.contextPanel.x + 12, y);
+        y += 24;
+
+        ctx.font = '15px Arial';
+        ctx.fillText(`Type: ${card?.type || TEXT.state.none} / ${preview.costText}`, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        if (card?.type === 'TYPE' && card.requiredAttackType) {
+          ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
+          y += 20;
+        }
+
+        ctx.fillText(preview.requirementText, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(preview.effectText, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(preview.enhanceText, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(
+          formatText(TEXT.preview.actorSummary, {
+            count: preview.validActorIds.length,
+            list: formatIdList(preview.validActorIds)
+          }),
+          CONFIG.contextPanel.x + 12,
+          y
+        );
+        y += 20;
+        ctx.fillText(preview.actorHint, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(preview.targetHint, CONFIG.contextPanel.x + 12, y);
+        y += 22;
+        if (card?.effect?.kind === 'damage') {
+          ctx.fillText(formatText(TEXT.preview.damagePreview, { damage: preview.damagePreview }), CONFIG.contextPanel.x + 12, y);
+          y += 20;
+        }
+        ctx.fillStyle = preview.playable ? '#8df4a1' : '#ff9ea1';
+        ctx.fillText(preview.playable
+          ? TEXT.preview.usableNow
+          : formatText(TEXT.preview.unusable, { reason: preview.reason }), CONFIG.contextPanel.x + 12, y);
+        return y;
       }
 
       function drawBattleInfoPanel() {
@@ -1763,6 +1879,46 @@
         ctx.font = '14px Arial';
         const playerDeckMax = gameState.player.deck.length + gameState.player.discard.length + gameState.player.hand.length;
         ctx.fillText(`Deck ${gameState.player.deck.length} / ${playerDeckMax}   Discard ${gameState.player.discard.length}`, CONFIG.fieldPanel.x + 12, CONFIG.fieldPanel.y + 148);
+      }
+
+      function drawTurnFlash(now) {
+        const flash = gameState.ui.turnFlash;
+        if (!flash.text || flash.timer <= now) return;
+        const duration = flash.duration || CONFIG.turnFlash.durationMs;
+        const remaining = clamp((flash.timer - now) / duration, 0, 1);
+        const alpha = 0.25 + remaining * 0.55;
+        const y = CONFIG.turnFlash.y;
+        const h = CONFIG.turnFlash.height;
+
+        ctx.fillStyle = `rgba(14, 30, 58, ${alpha})`;
+        ctx.fillRect(0, y, CONFIG.w, h);
+        ctx.strokeStyle = `rgba(130, 184, 255, ${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(20, y + 2, CONFIG.w - 40, h - 4);
+        ctx.fillStyle = '#e8f3ff';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText(flash.text, CONFIG.w / 2, y + 28);
+      }
+
+      function drawBattleFeedback(now) {
+        const feedback = gameState.ui.battleFeedback;
+        if (!feedback.text || feedback.timer <= now) return;
+        const duration = feedback.duration || CONFIG.battleFeedback.durationMs;
+        const remaining = clamp((feedback.timer - now) / duration, 0, 1);
+        const alpha = 0.2 + remaining * 0.65;
+        const y = CONFIG.battleFeedback.y;
+        const h = CONFIG.battleFeedback.height;
+
+        ctx.fillStyle = `rgba(10, 18, 34, ${alpha})`;
+        ctx.fillRect(24, y, CONFIG.w - 48, h);
+        ctx.strokeStyle = `rgba(127, 171, 232, ${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(24, y, CONFIG.w - 48, h);
+        ctx.fillStyle = '#dfeeff';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(feedback.text, CONFIG.w / 2, y + 21);
       }
 
 function drawLogOverlay() {
@@ -1807,6 +1963,7 @@ function drawLogOverlay() {
 }
 
       function render() {
+        const now = performance.now();
         ctx.fillStyle = CONFIG.colors.bg;
         ctx.fillRect(0, 0, CONFIG.w, CONFIG.h);
 
@@ -1818,6 +1975,8 @@ function drawLogOverlay() {
         drawPlayerHandArea();
         drawContextPanel();
         drawBattleInfoPanel();
+        drawTurnFlash(now);
+        drawBattleFeedback(now);
         drawEffectPreview();
         drawLogOverlay();
       }
