@@ -84,7 +84,7 @@
         logOverlay: { x: 130, y: 80, width: 940, height: 560 },
         turnFlash: { durationMs: 900, y: 120, height: 42 },
         battleFeedback: { durationMs: 1300, y: 734, height: 30 },
-        defenseReaction: { windowMs: 1800, enemyUseMinDamage: 3, enemyLowHpPercent: 34 },
+        defenseReaction: { windowMs: 3000, enemyUseMinDamage: 3, enemyLowHpPercent: 34, resolveDelayMs: 400 },
         colors: {
           bg: '#1f3564',
           panel: '#243f72',
@@ -160,7 +160,7 @@
           panelEnhance: 'Enhance: {text}',
           panelResult: 'Final Result: {text}',
           defenseWindow: 'Defense Window: play one DEF card now',
-          defenseWindowStatus: 'Defense React: {ms}ms',
+          defenseWindowStatus: 'DEFENSE REACTION ({sec}s)',
         },
         feedback: {
           invalidCard: 'Card not usable',
@@ -341,6 +341,10 @@
             remainingMs: 0,
             defendedByCardId: null,
             reducedDamage: 0,
+          },
+          defenseResolveDelay: {
+            active: false,
+            until: 0,
           },
           handCardPreviewById: {},
           defenseReaction: {
@@ -1105,6 +1109,10 @@
           amount: reaction.reducedDamage,
         }));
         setBattleFeedback(`BLOCK ${reaction.reducedDamage}`, CONFIG.battleFeedback.durationMs);
+        gameState.ui.defenseResolveDelay = {
+          active: true,
+          until: performance.now() + CONFIG.defenseReaction.resolveDelayMs,
+        };
       }
 
       function resolvePendingAttack() {
@@ -1171,7 +1179,6 @@
             reducedDamage: 0,
           };
           applyDefenseCard(defenderSide, defenseCards[0]);
-          resolvePendingAttack();
           return true;
         }
 
@@ -1573,8 +1580,6 @@
             return;
           }
           applyDefenseCard('player', defenseCard);
-          resolvePendingAttack();
-          checkWinCondition();
           return;
         }
 
@@ -1610,6 +1615,15 @@
           const event = gameState.inputQueue.shift();
           if (event.type === 'click') {
             handleCanvasClick(event.x, event.y);
+          }
+        }
+
+        if (gameState.ui.defenseResolveDelay.active) {
+          if (now >= gameState.ui.defenseResolveDelay.until) {
+            gameState.ui.defenseResolveDelay.active = false;
+            gameState.ui.defenseResolveDelay.until = 0;
+            resolvePendingAttack();
+            checkWinCondition();
           }
         }
 
@@ -2222,10 +2236,11 @@
         let y = CONFIG.contextPanel.y + 62;
 
         if (gameState.ui.defenseReaction.active && gameState.ui.defenseReaction.defenderSide === 'player') {
+          const remainingSec = ((gameState.ui.defenseReaction.remainingMs ?? 0) / 1000).toFixed(1);
           ctx.fillStyle = '#ffd88f';
           ctx.font = 'bold 16px Arial';
           ctx.fillText(
-            formatText(TEXT.preview.defenseWindowStatus, { ms: gameState.ui.defenseReaction.remainingMs ?? 0 }),
+            formatText(TEXT.preview.defenseWindowStatus, { sec: remainingSec }),
             CONFIG.contextPanel.x + 12,
             y
           );
@@ -2489,6 +2504,7 @@ function drawLogOverlay() {
         gameState.ui.highlight.validTargetIds = [];
         gameState.ui.handCardPreviewById = {};
         clearDefenseReactionState();
+        gameState.ui.defenseResolveDelay = { active: false, until: 0 };
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
         gameState.field = {
