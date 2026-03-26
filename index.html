@@ -84,7 +84,7 @@
         logOverlay: { x: 130, y: 80, width: 940, height: 560 },
         turnFlash: { durationMs: 900, y: 120, height: 42 },
         battleFeedback: { durationMs: 1300, y: 734, height: 30 },
-        defenseReaction: { windowMs: 1800 },
+        defenseReaction: { windowMs: 1800, enemyUseMinDamage: 3, enemyLowHpPercent: 34 },
         colors: {
           bg: '#1f3564',
           panel: '#243f72',
@@ -160,6 +160,7 @@
           panelEnhance: 'Enhance: {text}',
           panelResult: 'Final Result: {text}',
           defenseWindow: 'Defense Window: play one DEF card now',
+          defenseWindowStatus: 'Defense React: {ms}ms',
         },
         feedback: {
           invalidCard: 'Card not usable',
@@ -197,6 +198,7 @@
           cardConsume: '{card} consumed {detail}.',
           defeated: '{name} was defeated.',
           win: '{side} wins.',
+          defenseUsed: '{side} used {card} and blocked {amount}.',
         },
         reason: {
           noCard: 'No card selected.',
@@ -324,6 +326,21 @@
             enhanceSummary: '',
             resultSummary: '',
             enhancedActive: false,
+          },
+          handCardPreviewById: {},
+          defenseReaction: {
+            active: false,
+            attackerSide: null,
+            defenderSide: null,
+            actorId: null,
+            targetId: null,
+            cardId: null,
+            damage: 0,
+            enhanced: false,
+            expiresAt: 0,
+            remainingMs: 0,
+            defendedByCardId: null,
+            reducedDamage: 0,
           },
           handCardPreviewById: {},
           defenseReaction: {
@@ -638,6 +655,7 @@
           makeCard({ id: 'sup_thunder_common_shard', asset: 'cards.sup_thunder_common_shard', name: 'Thunder Shard', category: 'sup', cardClass: 'SHARD', element: 'thunder', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', effect: { kind: 'shard', energy: 'thunder' } }),
           makeCard({ id: 'sup_earth_common_shard', asset: 'cards.sup_earth_common_shard', name: 'Earth Shard', category: 'sup', cardClass: 'SHARD', element: 'earth', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', effect: { kind: 'shard', energy: 'earth' } }),
           makeCard({ id: 'def_beast_guard', asset: 'cards.def_beast_guard', name: 'Guard Burst', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block incoming damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 99 } }),
+          makeCard({ id: 'def_beast_quickBarrier', asset: 'cards.def_beast_guard', name: 'Quick Barrier', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 1, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block 3 damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 3 } }),
           makeCard({ id: 'atk_neutral_common_raiKa', asset: 'cards.atk_neutral_common_raiKa', name: '雷火', category: 'atk', cardClass: 'COMMON', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 5, bonusText: 'F4/T4で+5ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 4 damage. Enhanced with shared field.', effect: { kind: 'damage', amount: 4 } }),
           makeCard({ id: 'atk_fire_beast_megaFlame', asset: 'cards.atk_fire_beast_megaFlame', name: 'Mega Flame', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 8 damage. Consume Fire 3.', effect: { kind: 'damage', amount: 8 }, requiredAttackType: 'fire' }),
           makeCard({ id: 'atk_thunder_beast_stormNova', asset: 'cards.atk_thunder_beast_stormNova', name: 'Storm Nova', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 3, bonusText: 'T5/F2で+3ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 5 damage. Enhance and consume Thunder 2.', effect: { kind: 'damage', amount: 5 }, requiredAttackType: 'thunder' }),
@@ -1031,6 +1049,7 @@
           damage: 0,
           enhanced: false,
           expiresAt: 0,
+          remainingMs: 0,
           defendedByCardId: null,
           reducedDamage: 0,
         };
@@ -1052,6 +1071,12 @@
         reaction.reducedDamage = reaction.damage - nextDamage;
         reaction.damage = nextDamage;
         moveCardToDiscard(side, defenseCard.id);
+        appendLog(formatText(TEXT.msg.defenseUsed, {
+          side: capitalize(side),
+          card: defenseCard.name || defenseCard.id,
+          amount: reaction.reducedDamage,
+        }));
+        setBattleFeedback(`BLOCK ${reaction.reducedDamage}`, CONFIG.battleFeedback.durationMs);
       }
 
       function resolvePendingAttack() {
@@ -1088,7 +1113,17 @@
         if (finalDamage <= 0 || defenseCards.length === 0) return false;
 
         if (defenderSide === 'enemy') {
-          const useDefense = finalDamage >= 2 && getSideData(defenderSide).guts > 0;
+          const targetMonster = getMonster(getSideData(defenderSide), targetId);
+          const targetHp = targetMonster?.hp ?? 0;
+          const hpPercent = targetMonster?.maxHp > 0
+            ? Math.floor((targetHp * 100) / targetMonster.maxHp)
+            : 0;
+          const lethal = targetHp > 0 && finalDamage >= targetHp;
+          const useDefense =
+            getSideData(defenderSide).guts > 0 &&
+            (lethal ||
+              finalDamage >= CONFIG.defenseReaction.enemyUseMinDamage ||
+              hpPercent <= CONFIG.defenseReaction.enemyLowHpPercent);
           if (!useDefense) return false;
           gameState.ui.defenseReaction = {
             active: true,
@@ -1100,6 +1135,7 @@
             damage: finalDamage,
             enhanced: !!enhanced,
             expiresAt: 0,
+            remainingMs: 0,
             defendedByCardId: null,
             reducedDamage: 0,
           };
@@ -1118,6 +1154,7 @@
           damage: finalDamage,
           enhanced: !!enhanced,
           expiresAt: performance.now() + CONFIG.defenseReaction.windowMs,
+          remainingMs: CONFIG.defenseReaction.windowMs,
           defendedByCardId: null,
           reducedDamage: 0,
         };
@@ -1557,6 +1594,11 @@
 
         if (gameState.ui.defenseReaction.active) {
           const reaction = gameState.ui.defenseReaction;
+          if (reaction.defenderSide === 'player') {
+            reaction.remainingMs = Math.max(0, Math.floor(reaction.expiresAt - now));
+          } else {
+            reaction.remainingMs = 0;
+          }
           if (reaction.defenderSide === 'player' && now >= reaction.expiresAt) {
             resolvePendingAttack();
             checkWinCondition();
@@ -2147,6 +2189,17 @@
 
         const preview = gameState.ui.cardPreview;
         let y = CONFIG.contextPanel.y + 62;
+
+        if (gameState.ui.defenseReaction.active && gameState.ui.defenseReaction.defenderSide === 'player') {
+          ctx.fillStyle = '#ffd88f';
+          ctx.font = 'bold 16px Arial';
+          ctx.fillText(
+            formatText(TEXT.preview.defenseWindowStatus, { ms: gameState.ui.defenseReaction.remainingMs ?? 0 }),
+            CONFIG.contextPanel.x + 12,
+            y
+          );
+          y += 22;
+        }
 
         if (!preview.visible) {
           y = drawEmptyContextHint(y);
