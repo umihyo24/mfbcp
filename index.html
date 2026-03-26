@@ -66,7 +66,19 @@
           badgeGap: 6,
           edgeInset: 2,
         },
-        handCard: { width: 142, height: 146, gap: 10 },
+        handCard: {
+          width: 142,
+          height: 146,
+          gap: 10,
+          artX: 8,
+          artY: 22,
+          artW: 126,
+          artH: 72,
+          topY: 16,
+          resultY: 108,
+          iconY: 122,
+          noteY: 136,
+        },
         enemyMiniCard: { width: 62, height: 88, gap: 6 },
         button: { width: 132, height: 32, gap: 10 },
         logOverlay: { x: 130, y: 80, width: 940, height: 560 },
@@ -138,6 +150,14 @@
           damagePreview: 'Damage Preview: {damage}',
           enhanceActive: 'Enhance: ACTIVE (+{bonus})',
           enhanceInactive: 'Enhance: inactive (+{bonus})',
+          panelUsable: 'Status: USABLE',
+          panelUnusable: 'Status: UNUSABLE',
+          panelReason: 'Reason: {reason}',
+          panelCost: 'Base Cost: {cost}',
+          panelRequirement: 'Requirement: {text}',
+          panelConsume: 'Optional Consume: {text}',
+          panelEnhance: 'Enhance: {text}',
+          panelResult: 'Final Result: {text}',
         },
         feedback: {
           invalidCard: 'Card not usable',
@@ -200,6 +220,13 @@
           disabled: 'DISABLED',
           typeAttack: 'A',
           typeDefense: 'D',
+        },
+        cardFace: {
+          damageIcon: '⚔',
+          shardIcon: '✦',
+          consumePrefix: 'OPT',
+          enhancePrefix: 'ENH',
+          noOptional: '-',
         },
       };
 
@@ -289,7 +316,12 @@
             validActorIds: [],
             validTargetIds: [],
             damagePreview: 0,
+            consumeSummary: '',
+            enhanceSummary: '',
+            resultSummary: '',
+            enhancedActive: false,
           },
+          handCardPreviewById: {},
           battleFeedback: {
             text: '',
             timer: 0,
@@ -732,6 +764,25 @@
         return ids.join(', ');
       }
 
+      function formatEnergyTriplet(triplet = { fire: 0, thunder: 0, earth: 0 }) {
+        return `F${triplet.fire ?? 0} / T${triplet.thunder ?? 0} / E${triplet.earth ?? 0}`;
+      }
+
+      function getOptionalConsumeSummary(card) {
+        const consume = card?.consume || { fire: 0, thunder: 0, earth: 0 };
+        const parts = ELEMENTS
+          .filter((element) => (consume[element] ?? 0) > 0)
+          .map((element) => `${capitalize(element).slice(0, 1)}${consume[element]}`);
+        return parts.length > 0 ? parts.join(' ') : TEXT.cardFace.noOptional;
+      }
+
+      function getEnhanceSummary(card) {
+        const enhance = card?.enhance || null;
+        if (!enhance) return TEXT.cardFace.noOptional;
+        const condText = formatEnergyTriplet(enhance.condition || { fire: 0, thunder: 0, earth: 0 });
+        return `${condText} -> +${enhance.bonusDamage ?? 0}`;
+      }
+
       function buildCardPreviewState(state, side, card, actorId = null) {
         const empty = {
           visible: false,
@@ -748,6 +799,10 @@
           validActorIds: [],
           validTargetIds: [],
           damagePreview: 0,
+          consumeSummary: '',
+          enhanceSummary: '',
+          resultSummary: '',
+          enhancedActive: false,
         };
 
         if (!state || !card || !side) return empty;
@@ -767,6 +822,11 @@
           : { valid: false, reason: TEXT.reason.needActor };
         const enhanced = isCardEnhanced(cardInHand);
         const damagePreview = cardInHand.effect?.kind === 'damage' ? getCardFinalDamage(cardInHand) : 0;
+        const consumeSummary = getOptionalConsumeSummary(cardInHand);
+        const enhanceSummary = getEnhanceSummary(cardInHand);
+        const resultSummary = cardInHand.effect?.kind === 'damage'
+          ? `Damage ${damagePreview}`
+          : `Gain +${CONFIG.energy.shardGain} Guts / +${CONFIG.energy.shardGain} Energy`;
 
         let effectText = formatText(TEXT.preview.effectOther, { kind: cardInHand.effect?.kind ?? 'none' });
         if (cardInHand.effect?.kind === 'damage') {
@@ -811,6 +871,10 @@
           validActorIds,
           validTargetIds,
           damagePreview,
+          consumeSummary,
+          enhanceSummary,
+          resultSummary,
+          enhancedActive: enhanced,
         };
       }
 
@@ -1350,6 +1414,11 @@
         const previewCard = selectedCard || hoveredCard;
         const previewActorId = gameState.selectedActorId || null;
         gameState.ui.cardPreview = buildCardPreviewState(gameState, 'player', previewCard, previewActorId);
+        const handPreviewById = {};
+        gameState.player.hand.forEach((card) => {
+          handPreviewById[card.id] = buildCardPreviewState(gameState, 'player', card, previewActorId);
+        });
+        gameState.ui.handCardPreviewById = handPreviewById;
         updateHighlightState(previewCard);
       }
 
@@ -1708,7 +1777,7 @@
       }
 
       function drawPlayerCard(card, x, y, hover) {
-        const usability = getCardUsability('player', card);
+        const preview = gameState.ui.handCardPreviewById?.[card.id] || null;
         const selectedForGuts = gameState.temp.gutsSelectedCardIds.includes(card.id);
 
         const scale = hover ? 1.04 : 1;
@@ -1737,20 +1806,41 @@
           ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
         }
 
-        drawAssetOrFallback(card.asset, dx + 10, dy + 8, width - 20, 70, card.id);
+        const artX = dx + CONFIG.handCard.artX;
+        const artY = dy + CONFIG.handCard.artY;
+        const artW = width - (CONFIG.handCard.width - CONFIG.handCard.artW);
+        const artH = CONFIG.handCard.artH;
+        drawAssetOrFallback(card.asset, artX, artY, artW, artH, card.id);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
         ctx.font = 'bold 13px Arial';
-        ctx.fillText(card.name, dx + 8, dy + 92);
-        ctx.font = '12px Arial';
-        const typeText = card.type === 'TYPE' && card.requiredAttackType
-          ? `${card.type}(${card.requiredAttackType})`
-          : card.type;
-        ctx.fillText(`${typeText} / Cost ${card.cost}`, dx + 8, dy + 108);
-        ctx.fillText(`Req F${card.requirement.fire} T${card.requirement.thunder} E${card.requirement.earth}`, dx + 8, dy + 124);
+        ctx.fillText(card.name, dx + 8, dy + CONFIG.handCard.topY);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${card.cost}`, dx + width - 8, dy + CONFIG.handCard.topY);
 
-        if (!usability.playable && gameState.turnPhase === 'attack') {
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 12px Arial';
+        const icon = card.effect?.kind === 'damage' ? TEXT.cardFace.damageIcon : TEXT.cardFace.shardIcon;
+        const resultColor = preview?.playable
+          ? (preview?.enhancedActive ? '#f0d76b' : '#ffffff')
+          : '#ff9ea1';
+        ctx.fillStyle = resultColor;
+        ctx.fillText(`${icon} ${preview?.resultSummary || TEXT.state.none}`, dx + 8, dy + CONFIG.handCard.resultY);
+
+        ctx.font = '11px Arial';
+        ctx.fillStyle = '#b8cbf0';
+        ctx.fillText(`${card.type || 'N/A'}`, dx + 8, dy + CONFIG.handCard.iconY);
+
+        const consumeActive = (preview?.consumeSummary || TEXT.cardFace.noOptional) !== TEXT.cardFace.noOptional;
+        ctx.fillStyle = consumeActive ? '#cce6ff' : '#808ea9';
+        ctx.fillText(`${TEXT.cardFace.consumePrefix} ${preview?.consumeSummary || TEXT.cardFace.noOptional}`, dx + 8, dy + CONFIG.handCard.noteY);
+
+        ctx.textAlign = 'right';
+        ctx.fillStyle = preview?.enhancedActive ? '#e9da7b' : '#8aa3c9';
+        ctx.fillText(`${TEXT.cardFace.enhancePrefix} ${preview?.enhanceSummary || TEXT.cardFace.noOptional}`, dx + width - 8, dy + CONFIG.handCard.noteY);
+
+        if (!preview?.playable && gameState.turnPhase === 'attack') {
           ctx.fillStyle = CONFIG.colors.cardDisabled;
           ctx.fillRect(dx, dy, width, height);
         }
@@ -1895,6 +1985,7 @@
       function drawContextCardPreview(preview, startY) {
         const card = findCardById(preview.cardId);
         let y = startY;
+        const maxW = CONFIG.contextPanel.width - 24;
 
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 18px Arial';
@@ -1902,24 +1993,37 @@
         y += 24;
 
         ctx.font = '15px Arial';
-        ctx.fillText(`Type: ${card?.type || TEXT.state.none}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillStyle = preview.playable ? '#8df4a1' : '#ff9ea1';
+        ctx.fillText(preview.playable ? TEXT.preview.panelUsable : TEXT.preview.panelUnusable, CONFIG.contextPanel.x + 12, y);
         y += 20;
-        ctx.fillText(preview.costText, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        if (card?.type === 'TYPE' && card.requiredAttackType) {
-          ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
+        if (!preview.playable) {
+          ctx.fillText(formatText(TEXT.preview.panelReason, { reason: preview.reason }), CONFIG.contextPanel.x + 12, y);
           y += 20;
         }
 
-        if (card?.effect?.kind === 'damage') {
-          ctx.fillStyle = '#d6e8ff';
-          ctx.fillText(formatText(TEXT.preview.damagePreview, { damage: preview.damagePreview }), CONFIG.contextPanel.x + 12, y);
-          y += 20;
-        }
-        ctx.fillStyle = preview.playable ? '#8df4a1' : '#ff9ea1';
-        ctx.fillText(preview.playable
-          ? TEXT.preview.usableNow
-          : formatText(TEXT.preview.unusable, { reason: preview.reason }), CONFIG.contextPanel.x + 12, y);
+        ctx.fillStyle = '#d6e8ff';
+        ctx.fillText(formatText(TEXT.preview.panelCost, { cost: card?.cost ?? 0 }), CONFIG.contextPanel.x + 12, y);
+        y += 20;
+
+        wrapText(
+          formatText(TEXT.preview.panelRequirement, { text: preview.requirementText || TEXT.state.none }),
+          maxW
+        ).forEach((line) => {
+          ctx.fillText(line, CONFIG.contextPanel.x + 12, y);
+          y += 18;
+        });
+
+        ctx.fillStyle = '#b9cbe7';
+        ctx.fillText(formatText(TEXT.preview.panelConsume, { text: preview.consumeSummary || TEXT.cardFace.noOptional }), CONFIG.contextPanel.x + 12, y);
+        y += 20;
+
+        ctx.fillStyle = preview.enhancedActive ? '#f0d76b' : '#b9cbe7';
+        ctx.fillText(formatText(TEXT.preview.panelEnhance, { text: preview.enhanceSummary || TEXT.cardFace.noOptional }), CONFIG.contextPanel.x + 12, y);
+        y += 20;
+
+        const resultText = preview.resultSummary || formatText(TEXT.preview.damagePreview, { damage: preview.damagePreview });
+        ctx.fillStyle = preview.enhancedActive ? '#f0d76b' : '#ffffff';
+        ctx.fillText(formatText(TEXT.preview.panelResult, { text: resultText }), CONFIG.contextPanel.x + 12, y);
         return y;
       }
 
@@ -2119,6 +2223,7 @@ function drawLogOverlay() {
         gameState.ui.highlight.selectedActorId = null;
         gameState.ui.highlight.validActorIds = [];
         gameState.ui.highlight.validTargetIds = [];
+        gameState.ui.handCardPreviewById = {};
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
         gameState.field = {
