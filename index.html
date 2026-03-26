@@ -669,8 +669,8 @@
           makeCard({ id: 'sup_fire_common_shard', asset: 'cards.sup_fire_common_shard', name: 'Fire Shard', category: 'sup', cardClass: 'SHARD', element: 'fire', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Fire Energy.', effect: { kind: 'shard', energy: 'fire' } }),
           makeCard({ id: 'sup_thunder_common_shard', asset: 'cards.sup_thunder_common_shard', name: 'Thunder Shard', category: 'sup', cardClass: 'SHARD', element: 'thunder', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', effect: { kind: 'shard', energy: 'thunder' } }),
           makeCard({ id: 'sup_earth_common_shard', asset: 'cards.sup_earth_common_shard', name: 'Earth Shard', category: 'sup', cardClass: 'SHARD', element: 'earth', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', effect: { kind: 'shard', energy: 'earth' } }),
-          makeCard({ id: 'def_beast_guard', asset: 'cards.def_beast_guard', name: 'Guard Burst', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block incoming damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 99 } }),
-          makeCard({ id: 'def_beast_quickBarrier', asset: 'cards.def_beast_guard', name: 'Quick Barrier', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 1, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block 3 damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 3 } }),
+          makeCard({ id: 'def_beast_guard', asset: 'cards.def_beast_guard', name: 'Guard Burst', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block incoming damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 99, gutsMode: 'zero' } }),
+          makeCard({ id: 'def_beast_quickBarrier', asset: 'cards.def_beast_guard', name: 'Quick Barrier', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 1, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block 3 damage. Lose 1 Guts.', effect: { kind: 'defense', blockAmount: 3, gutsLoss: 1 } }),
           makeCard({ id: 'atk_neutral_common_raiKa', asset: 'cards.atk_neutral_common_raiKa', name: '雷火', category: 'atk', cardClass: 'COMMON', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 5, bonusText: 'F4/T4で+5ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 4 damage. Enhanced with shared field.', effect: { kind: 'damage', amount: 4 } }),
           makeCard({ id: 'atk_fire_beast_megaFlame', asset: 'cards.atk_fire_beast_megaFlame', name: 'Mega Flame', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 8 damage. Consume Fire 3.', effect: { kind: 'damage', amount: 8 }, requiredAttackType: 'fire' }),
           makeCard({ id: 'atk_thunder_beast_stormNova', asset: 'cards.atk_thunder_beast_stormNova', name: 'Storm Nova', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 3, bonusText: 'T5/F2で+3ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 5 damage. Enhance and consume Thunder 2.', effect: { kind: 'damage', amount: 5 }, requiredAttackType: 'thunder' }),
@@ -1084,7 +1084,15 @@
         const reaction = gameState.ui.defenseReaction;
         if (!reaction.active || reaction.defenderSide !== side || !defenseCard) return;
         const sideData = getSideData(side);
-        sideData.guts = 0;
+        if (defenseCard.effect?.gutsMode === 'zero') {
+          sideData.guts = 0;
+        } else if ((defenseCard.effect?.gutsLoss ?? 0) > 0) {
+          sideData.guts = clamp(
+            sideData.guts - (defenseCard.effect.gutsLoss ?? 0),
+            0,
+            sideData.maxGuts
+          );
+        }
         const blockAmount = Math.max(0, defenseCard.effect?.blockAmount ?? reaction.damage);
         const nextDamage = clamp(reaction.damage - blockAmount, 0, reaction.damage);
         reaction.defendedByCardId = defenseCard.id;
