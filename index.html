@@ -122,9 +122,9 @@
           playerUsed: 'Player used {card}',
           enemyUsed: 'Enemy used {card}',
           usedBy: '{actor} used {card}',
-          inspectHint: 'Hover or select a card to inspect.',
-          usableNow: 'Usable now',
-          unusable: 'Unusable: {reason}',
+          inspectHint: 'No card selected.',
+          usableNow: '[USABLE]',
+          unusable: '[UNUSABLE] {reason}',
           actorHintNeedSelection: 'Select actor to validate TYPE requirement.',
           actorHintValid: 'Actor selectable',
           actorHintInvalid: 'Actor not selectable: {reason}',
@@ -257,6 +257,13 @@
           showLogOverlay: false,
           invalidReason: TEXT.state.none,
           enemyMessage: TEXT.state.enemyIdleMessage,
+          highlight: {
+            selectedCardId: null,
+            selectedActorId: null,
+            hoveredMonsterId: null,
+            validActorIds: [],
+            validTargetIds: [],
+          },
           effectPreview: {
             visible: false,
             side: 'player',
@@ -1324,6 +1331,28 @@
         const previewCard = selectedCard || hoveredCard;
         const previewActorId = gameState.selectedActorId || null;
         gameState.ui.cardPreview = buildCardPreviewState(gameState, 'player', previewCard, previewActorId);
+        updateHighlightState(previewCard);
+      }
+
+      function updateHighlightState(previewCard) {
+        const highlight = gameState.ui.highlight || {};
+        const safeCard = previewCard || null;
+        const selectedActor = getMonster(gameState.player, gameState.selectedActorId);
+        const baseUsability = getCardUsability('player', safeCard, selectedActor || null);
+        const canShowActors = !!safeCard && baseUsability.playable;
+        const canShowTargets = gameState.selectionStep === 'selectTarget' && !!safeCard && baseUsability.playable;
+
+        highlight.selectedCardId = gameState.selectedCardId || null;
+        highlight.selectedActorId = gameState.selectedActorId || null;
+        highlight.hoveredMonsterId = highlight.hoveredMonsterId || null;
+        highlight.validActorIds = canShowActors
+          ? getValidActorIds('player').filter((id) => getActorSelectionValidation('player', id, safeCard).valid)
+          : [];
+        highlight.validTargetIds = canShowTargets
+          ? getValidTargetIds('player', safeCard)
+          : [];
+
+        gameState.ui.highlight = highlight;
       }
 
       function drawPanel(x, y, width, height) {
@@ -1387,26 +1416,25 @@
       function drawMonsterCard(monster, side, x, y) {
         drawPanel(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
 
-        const card = getCardFromHand(gameState.player, gameState.selectedCardId);
-        const validActor =
-          gameState.selectionStep === 'selectActor' &&
-          side === 'player' &&
-          getValidActorIds('player').includes(monster.id);
-
-        const validTarget =
-          gameState.selectionStep === 'selectTarget' &&
-          side === 'enemy' &&
-          card &&
-          getValidTargetIds('player', card).includes(monster.id);
-
-        const selectedActor = gameState.selectedActorId === monster.id;
+        const highlight = gameState.ui.highlight || {};
+        const validActorIds = Array.isArray(highlight.validActorIds) ? highlight.validActorIds : [];
+        const validTargetIds = Array.isArray(highlight.validTargetIds) ? highlight.validTargetIds : [];
+        const selectedActor = highlight.selectedActorId === monster.id;
         const selectedTarget = gameState.selectedTargetId === monster.id;
+        const validActor = side === 'player' && validActorIds.includes(monster.id);
+        const validTarget = side === 'enemy' && validTargetIds.includes(monster.id);
+        const hoveredMonster = highlight.hoveredMonsterId === monster.id;
         const acted =
           monster.alive &&
           monster.hasActedThisTurn &&
           gameState.turnPhase === 'attack' &&
           gameState.turnSide === side;
         const disabled = !monster.alive;
+        const actorSelectionActive = gameState.selectionStep === 'selectActor';
+        const targetSelectionActive = gameState.selectionStep === 'selectTarget';
+        const unusableActor = actorSelectionActive && side === 'player' && monster.alive && !validActor;
+        const unusableTarget = targetSelectionActive && side === 'enemy' && monster.alive && !validTarget;
+        const unusableState = unusableActor || unusableTarget || acted || disabled;
         const activeTurnMonster = gameState.turnSide === side && gameState.turnPhase === 'attack';
         const cardPadding = CONFIG.monsterCard.padding;
         const portraitX = x + cardPadding;
@@ -1414,29 +1442,18 @@
         const portraitW = CONFIG.monsterCard.width - cardPadding * 2;
         const inset = CONFIG.monsterCard.edgeInset;
 
-        if (validActor) {
-          ctx.fillStyle = CONFIG.colors.actorSoft;
-          ctx.fillRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
-        }
-
-        if (validTarget) {
-          ctx.fillStyle = CONFIG.colors.targetSoft;
-          ctx.fillRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
-        }
-
         if (selectedActor) {
           ctx.strokeStyle = CONFIG.colors.actorStrong;
           ctx.lineWidth = 4;
           ctx.strokeRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
-        }
-
-        if (selectedTarget) {
+        } else if (validTarget || selectedTarget) {
           ctx.strokeStyle = CONFIG.colors.targetStrong;
           ctx.lineWidth = 4;
           ctx.strokeRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
-        }
-
-        if (activeTurnMonster && !validActor && !selectedActor && !selectedTarget && !validTarget && !acted && monster.alive) {
+        } else if (validActor) {
+          ctx.fillStyle = CONFIG.colors.actorSoft;
+          ctx.fillRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
+        } else if (activeTurnMonster && monster.alive && !unusableState) {
           ctx.strokeStyle = 'rgba(235, 243, 255, 0.55)';
           ctx.lineWidth = 2;
           ctx.strokeRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
@@ -1464,19 +1481,21 @@
         ctx.font = 'bold 24px Arial';
         ctx.fillText(`HP ${monster.hp}`, x + 12, y + CONFIG.monsterCard.hpTextY);
 
-        if (acted || disabled) {
+        if (unusableState) {
           ctx.fillStyle = disabled ? CONFIG.colors.dead : 'rgba(10, 14, 24, 0.48)';
           ctx.fillRect(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
           ctx.fillStyle = disabled ? '#c8d1e8' : '#ffd073';
           ctx.font = 'bold 14px Arial';
-          const stateText = disabled ? TEXT.monster.down : TEXT.monster.acted;
+          const stateText = disabled
+            ? TEXT.monster.down
+            : (acted ? TEXT.monster.acted : TEXT.monster.disabled);
           ctx.fillText(stateText, x + 12, y + 24);
-        } else if (activeTurnMonster && !canMonsterAct(monster)) {
-          ctx.fillStyle = 'rgba(10, 14, 24, 0.35)';
-          ctx.fillRect(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
-          ctx.fillStyle = '#e0e7f8';
-          ctx.font = 'bold 14px Arial';
-          ctx.fillText(TEXT.monster.disabled, x + 12, y + 24);
+        }
+
+        if (hoveredMonster && !selectedActor && !selectedTarget) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + 4, y + 4, CONFIG.monsterCard.width - 8, CONFIG.monsterCard.height - 8);
         }
 
         gameState.uiRects.monsters.push({
@@ -1808,11 +1827,6 @@
         return getCardFromHand(gameState.player, gameState.selectedCardId);
       }
 
-      function getSelectionStatusText() {
-        if (!gameState.selectedCardId) return 'Selection: none';
-        return `Selection: ${gameState.selectionStep}`;
-      }
-
       function wrapText(text, maxWidth) {
         const words = text.split(' ');
         const lines = [];
@@ -1848,21 +1862,6 @@
         } else {
           y = drawContextCardPreview(preview, y);
         }
-
-        y += 28;
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px Arial';
-        ctx.fillText(getSelectionStatusText(), CONFIG.contextPanel.x + 12, y);
-        y += 22;
-        ctx.fillText(`Actor: ${gameState.selectedActorId || 'none'}`, CONFIG.contextPanel.x + 12, y);
-        y += 22;
-        ctx.fillText(`Target: ${gameState.selectedTargetId || 'none'}`, CONFIG.contextPanel.x + 12, y);
-        y += 22;
-
-        if (gameState.ui.invalidReason !== TEXT.state.none) {
-          ctx.fillStyle = '#ffb8be';
-          ctx.fillText(`Reason: ${gameState.ui.invalidReason}`, CONFIG.contextPanel.x + 12, y);
-        }
       }
 
       function drawEmptyContextHint(startY) {
@@ -1882,33 +1881,17 @@
         y += 24;
 
         ctx.font = '15px Arial';
-        ctx.fillText(`Type: ${card?.type || TEXT.state.none} / ${preview.costText}`, CONFIG.contextPanel.x + 12, y);
+        ctx.fillText(`Type: ${card?.type || TEXT.state.none}`, CONFIG.contextPanel.x + 12, y);
+        y += 20;
+        ctx.fillText(preview.costText, CONFIG.contextPanel.x + 12, y);
         y += 20;
         if (card?.type === 'TYPE' && card.requiredAttackType) {
           ctx.fillText(`Required ATK Type: ${card.requiredAttackType}`, CONFIG.contextPanel.x + 12, y);
           y += 20;
         }
 
-        ctx.fillText(preview.requirementText, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(preview.effectText, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(preview.enhanceText, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(
-          formatText(TEXT.preview.actorSummary, {
-            count: preview.validActorIds.length,
-            list: formatIdList(preview.validActorIds)
-          }),
-          CONFIG.contextPanel.x + 12,
-          y
-        );
-        y += 20;
-        ctx.fillText(preview.actorHint, CONFIG.contextPanel.x + 12, y);
-        y += 20;
-        ctx.fillText(preview.targetHint, CONFIG.contextPanel.x + 12, y);
-        y += 22;
         if (card?.effect?.kind === 'damage') {
+          ctx.fillStyle = '#d6e8ff';
           ctx.fillText(formatText(TEXT.preview.damagePreview, { damage: preview.damagePreview }), CONFIG.contextPanel.x + 12, y);
           y += 20;
         }
@@ -2066,8 +2049,10 @@ function drawLogOverlay() {
 
       function onMouseMove(event) {
         const point = toCanvasPoint(event);
-        const hit = getHitRect(gameState.uiRects.playerCards, point.x, point.y);
-        gameState.hoveredCardId = hit ? hit.id : null;
+        const cardHit = getHitRect(gameState.uiRects.playerCards, point.x, point.y);
+        const monsterHit = getHitRect(gameState.uiRects.monsters, point.x, point.y);
+        gameState.hoveredCardId = cardHit ? cardHit.id : null;
+        gameState.ui.highlight.hoveredMonsterId = monsterHit ? monsterHit.id : null;
       }
 
       function onWheel(event) {
@@ -2108,6 +2093,11 @@ function drawLogOverlay() {
         gameState.assets.refs = {};
         gameState.assets.warnedMissing = {};
         gameState.hoveredCardId = null;
+        gameState.ui.highlight.hoveredMonsterId = null;
+        gameState.ui.highlight.selectedCardId = null;
+        gameState.ui.highlight.selectedActorId = null;
+        gameState.ui.highlight.validActorIds = [];
+        gameState.ui.highlight.validTargetIds = [];
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
         gameState.field = {
