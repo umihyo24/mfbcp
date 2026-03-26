@@ -84,6 +84,7 @@
         logOverlay: { x: 130, y: 80, width: 940, height: 560 },
         turnFlash: { durationMs: 900, y: 120, height: 42 },
         battleFeedback: { durationMs: 1300, y: 734, height: 30 },
+        defenseReaction: { windowMs: 1800 },
         colors: {
           bg: '#1f3564',
           panel: '#243f72',
@@ -158,6 +159,7 @@
           panelConsume: 'Optional Consume: {text}',
           panelEnhance: 'Enhance: {text}',
           panelResult: 'Final Result: {text}',
+          defenseWindow: 'Defense Window: play one DEF card now',
         },
         feedback: {
           invalidCard: 'Card not usable',
@@ -209,6 +211,7 @@
           typeMismatch: 'This monster cannot use that TYPE card.',
           needTarget: 'Select a valid target monster.',
           waitAttackPhase: 'Card can be used only in attack phase.',
+          defenseReactionOnly: 'DEF card can be used only in defense reaction.',
         },
         state: {
           none: 'none',
@@ -224,6 +227,7 @@
         cardFace: {
           damageIcon: '⚔',
           shardIcon: '✦',
+          defenseIcon: '🛡',
           consumePrefix: 'OPT',
           enhancePrefix: 'ENH',
           noOptional: '-',
@@ -320,6 +324,20 @@
             enhanceSummary: '',
             resultSummary: '',
             enhancedActive: false,
+          },
+          handCardPreviewById: {},
+          defenseReaction: {
+            active: false,
+            attackerSide: null,
+            defenderSide: null,
+            actorId: null,
+            targetId: null,
+            cardId: null,
+            damage: 0,
+            enhanced: false,
+            expiresAt: 0,
+            defendedByCardId: null,
+            reducedDamage: 0,
           },
           handCardPreviewById: {},
           battleFeedback: {
@@ -619,6 +637,7 @@
           makeCard({ id: 'sup_fire_common_shard', asset: 'cards.sup_fire_common_shard', name: 'Fire Shard', category: 'sup', cardClass: 'SHARD', element: 'fire', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Fire Energy.', effect: { kind: 'shard', energy: 'fire' } }),
           makeCard({ id: 'sup_thunder_common_shard', asset: 'cards.sup_thunder_common_shard', name: 'Thunder Shard', category: 'sup', cardClass: 'SHARD', element: 'thunder', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Thunder Energy.', effect: { kind: 'shard', energy: 'thunder' } }),
           makeCard({ id: 'sup_earth_common_shard', asset: 'cards.sup_earth_common_shard', name: 'Earth Shard', category: 'sup', cardClass: 'SHARD', element: 'earth', scope: 'common', cost: 0, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Gain +1 Guts and +1 Earth Energy.', effect: { kind: 'shard', energy: 'earth' } }),
+          makeCard({ id: 'def_beast_guard', asset: 'cards.def_beast_guard', name: 'Guard Burst', category: 'def', cardClass: 'DEF', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, description: 'Reaction: Block incoming damage. Lose all Guts.', effect: { kind: 'defense', blockAmount: 99 } }),
           makeCard({ id: 'atk_neutral_common_raiKa', asset: 'cards.atk_neutral_common_raiKa', name: '雷火', category: 'atk', cardClass: 'COMMON', element: null, scope: 'common', cost: 2, requirement: { fire: 0, thunder: 0, earth: 0 }, enhance: { condition: { fire: 4, thunder: 4, earth: 0 }, bonusDamage: 5, bonusText: 'F4/T4で+5ダメージ' }, consume: { fire: 0, thunder: 0, earth: 0 }, description: 'Deal 4 damage. Enhanced with shared field.', effect: { kind: 'damage', amount: 4 } }),
           makeCard({ id: 'atk_fire_beast_megaFlame', asset: 'cards.atk_fire_beast_megaFlame', name: 'Mega Flame', category: 'atk', cardClass: 'TYPE', element: 'fire', scope: 'beast', cost: 3, requirement: { fire: 5, thunder: 0, earth: 0 }, consume: { fire: 3, thunder: 0, earth: 0 }, description: 'Deal 8 damage. Consume Fire 3.', effect: { kind: 'damage', amount: 8 }, requiredAttackType: 'fire' }),
           makeCard({ id: 'atk_thunder_beast_stormNova', asset: 'cards.atk_thunder_beast_stormNova', name: 'Storm Nova', category: 'atk', cardClass: 'TYPE', element: 'thunder', scope: 'beast', cost: 3, requirement: { fire: 0, thunder: 3, earth: 0 }, enhance: { condition: { fire: 2, thunder: 5, earth: 0 }, bonusDamage: 3, bonusText: 'T5/F2で+3ダメージ' }, consume: { fire: 0, thunder: 2, earth: 0 }, description: 'Deal 5 damage. Enhance and consume Thunder 2.', effect: { kind: 'damage', amount: 5 }, requiredAttackType: 'thunder' }),
@@ -683,6 +702,14 @@
         );
       }
 
+      function isDefenseCard(card) {
+        return card?.effect?.kind === 'defense';
+      }
+
+      function isDefenseReactionOpenFor(side) {
+        return !!gameState.ui.defenseReaction?.active && gameState.ui.defenseReaction.defenderSide === side;
+      }
+
       function chooseShardEnergyElement(card) {
         const hinted = card?.effect?.energy;
         if (ELEMENTS.includes(hinted)) return hinted;
@@ -723,6 +750,9 @@
       function getCardUsability(side, card, actor = null) {
         const sideData = getSideData(side);
         if (!card) return { playable: false, reason: TEXT.reason.noCard };
+        if (isDefenseCard(card) && !isDefenseReactionOpenFor(side)) {
+          return { playable: false, reason: TEXT.reason.defenseReactionOnly };
+        }
         if (card.type === 'SHARD') return { playable: true, reason: TEXT.reason.shardAlways };
 
         if (sideData.guts < card.cost) {
@@ -826,7 +856,9 @@
         const enhanceSummary = getEnhanceSummary(cardInHand);
         const resultSummary = cardInHand.effect?.kind === 'damage'
           ? `Damage ${damagePreview}`
-          : `Gain +${CONFIG.energy.shardGain} Guts / +${CONFIG.energy.shardGain} Energy`;
+          : (cardInHand.effect?.kind === 'shard'
+            ? `Gain +${CONFIG.energy.shardGain} Guts / +${CONFIG.energy.shardGain} Energy`
+            : `Block ${cardInHand.effect?.blockAmount ?? 0}`);
 
         let effectText = formatText(TEXT.preview.effectOther, { kind: cardInHand.effect?.kind ?? 'none' });
         if (cardInHand.effect?.kind === 'damage') {
@@ -839,6 +871,8 @@
             gain: CONFIG.energy.shardGain,
             energy: previewEnergy,
           });
+        } else if (cardInHand.effect?.kind === 'defense') {
+          effectText = `Defense block: ${cardInHand.effect?.blockAmount ?? 0}`;
         }
 
         const actorHint = actorId
@@ -986,6 +1020,111 @@
         return true;
       }
 
+      function clearDefenseReactionState() {
+        gameState.ui.defenseReaction = {
+          active: false,
+          attackerSide: null,
+          defenderSide: null,
+          actorId: null,
+          targetId: null,
+          cardId: null,
+          damage: 0,
+          enhanced: false,
+          expiresAt: 0,
+          defendedByCardId: null,
+          reducedDamage: 0,
+        };
+      }
+
+      function getUsableDefenseCards(side) {
+        const sideData = getSideData(side);
+        return (sideData?.hand || []).filter((card) => isDefenseCard(card) && getCardUsability(side, card).playable);
+      }
+
+      function applyDefenseCard(side, defenseCard) {
+        const reaction = gameState.ui.defenseReaction;
+        if (!reaction.active || reaction.defenderSide !== side || !defenseCard) return;
+        const sideData = getSideData(side);
+        sideData.guts = 0;
+        const blockAmount = Math.max(0, defenseCard.effect?.blockAmount ?? reaction.damage);
+        const nextDamage = clamp(reaction.damage - blockAmount, 0, reaction.damage);
+        reaction.defendedByCardId = defenseCard.id;
+        reaction.reducedDamage = reaction.damage - nextDamage;
+        reaction.damage = nextDamage;
+        moveCardToDiscard(side, defenseCard.id);
+      }
+
+      function resolvePendingAttack() {
+        const reaction = gameState.ui.defenseReaction;
+        if (!reaction.active) return false;
+        const attackCard = findCardById(reaction.cardId);
+        const ok = dealDamage(reaction.defenderSide, reaction.targetId, reaction.damage);
+        if (!ok) {
+          clearDefenseReactionState();
+          return false;
+        }
+
+        appendLog(formatText(TEXT.msg.cardUsedDamage, {
+          side: capitalize(reaction.attackerSide),
+          card: attackCard?.name || reaction.cardId,
+          actor: reaction.actorId,
+          target: reaction.targetId,
+          amount: reaction.damage,
+        }));
+        if (reaction.enhanced) {
+          appendLog(formatText(TEXT.msg.cardEnhanced, { card: attackCard?.name || reaction.cardId }));
+          appendLog(formatText(TEXT.msg.cardEnhancedBonus, {
+            card: attackCard?.name || reaction.cardId,
+            bonus: attackCard?.enhance?.bonusDamage ?? 0
+          }));
+        }
+        clearDefenseReactionState();
+        return true;
+      }
+
+      function maybeOpenDefenseReaction(attackerSide, attackCard, actorId, targetId, finalDamage, enhanced) {
+        const defenderSide = getOpponentSide(attackerSide);
+        const defenseCards = getUsableDefenseCards(defenderSide);
+        if (finalDamage <= 0 || defenseCards.length === 0) return false;
+
+        if (defenderSide === 'enemy') {
+          const useDefense = finalDamage >= 2 && getSideData(defenderSide).guts > 0;
+          if (!useDefense) return false;
+          gameState.ui.defenseReaction = {
+            active: true,
+            attackerSide,
+            defenderSide,
+            actorId,
+            targetId,
+            cardId: attackCard.id,
+            damage: finalDamage,
+            enhanced: !!enhanced,
+            expiresAt: 0,
+            defendedByCardId: null,
+            reducedDamage: 0,
+          };
+          applyDefenseCard(defenderSide, defenseCards[0]);
+          resolvePendingAttack();
+          return true;
+        }
+
+        gameState.ui.defenseReaction = {
+          active: true,
+          attackerSide,
+          defenderSide,
+          actorId,
+          targetId,
+          cardId: attackCard.id,
+          damage: finalDamage,
+          enhanced: !!enhanced,
+          expiresAt: performance.now() + CONFIG.defenseReaction.windowMs,
+          defendedByCardId: null,
+          reducedDamage: 0,
+        };
+        setBattleFeedback(TEXT.preview.defenseWindow, CONFIG.defenseReaction.windowMs);
+        return true;
+      }
+
       function applyCard(side, card, actorId, targetId) {
         const actor = getMonster(getSideData(side), actorId);
         const actorName = actor?.name || actorId || '';
@@ -1002,22 +1141,24 @@
         if (card.effect.kind === 'damage') {
           const enhanced = isCardEnhanced(card);
           const finalDamage = getCardFinalDamage(card);
-          const ok = dealDamage(getOpponentSide(side), targetId, finalDamage);
-          if (!ok) return false;
-
-          appendLog(formatText(TEXT.msg.cardUsedDamage, {
-            side: capitalize(side),
-            card: card.name,
-            actor: actorId,
-            target: targetId,
-            amount: finalDamage,
-          }));
-          if (enhanced) {
-            appendLog(formatText(TEXT.msg.cardEnhanced, { card: card.name }));
-            appendLog(formatText(TEXT.msg.cardEnhancedBonus, {
+          const opened = maybeOpenDefenseReaction(side, card, actorId, targetId, finalDamage, enhanced);
+          if (!opened) {
+            const ok = dealDamage(getOpponentSide(side), targetId, finalDamage);
+            if (!ok) return false;
+            appendLog(formatText(TEXT.msg.cardUsedDamage, {
+              side: capitalize(side),
               card: card.name,
-              bonus: card.enhance?.bonusDamage ?? 0
+              actor: actorId,
+              target: targetId,
+              amount: finalDamage,
             }));
+            if (enhanced) {
+              appendLog(formatText(TEXT.msg.cardEnhanced, { card: card.name }));
+              appendLog(formatText(TEXT.msg.cardEnhancedBonus, {
+                card: card.name,
+                bonus: card.enhance?.bonusDamage ?? 0
+              }));
+            }
           }
         }
 
@@ -1353,6 +1494,22 @@
 
         if (gameState.ui.showLogOverlay) return;
 
+        if (gameState.ui.defenseReaction.active) {
+          if (gameState.ui.defenseReaction.defenderSide !== 'player') return;
+          const defenseCardHit = getHitRect(gameState.uiRects.playerCards, x, y);
+          if (!defenseCardHit) return;
+          const defenseCard = getCardFromHand(gameState.player, defenseCardHit.id);
+          const usability = getCardUsability('player', defenseCard);
+          if (!defenseCard || !isDefenseCard(defenseCard) || !usability.playable) {
+            setBattleFeedback(TEXT.feedback.invalidCard, CONFIG.battleFeedback.durationMs);
+            return;
+          }
+          applyDefenseCard('player', defenseCard);
+          resolvePendingAttack();
+          checkWinCondition();
+          return;
+        }
+
         const monsterHit = getHitRect(gameState.uiRects.monsters, x, y);
         if (monsterHit && gameState.turnSide === 'player' && gameState.turnPhase === 'attack') {
           if (monsterHit.side === 'player') {
@@ -1389,12 +1546,21 @@
         }
 
         if (
+          !gameState.ui.defenseReaction.active &&
           gameState.turnSide === 'enemy' &&
           gameState.turnPhase === 'attack' &&
           now >= gameState.enemyActionTimer
         ) {
           gameState.enemyActionTimer = now + 700;
           runEnemyAttackStep();
+        }
+
+        if (gameState.ui.defenseReaction.active) {
+          const reaction = gameState.ui.defenseReaction;
+          if (reaction.defenderSide === 'player' && now >= reaction.expiresAt) {
+            resolvePendingAttack();
+            checkWinCondition();
+          }
         }
 
         updateEffectPreview(now);
@@ -1806,6 +1972,18 @@
           ctx.strokeRect(dx + 6, dy + 6, width - 12, height - 12);
         }
 
+        if (gameState.ui.defenseReaction.active && gameState.ui.defenseReaction.defenderSide === 'player') {
+          const defenseReady = isDefenseCard(card) && (preview?.playable || false);
+          if (defenseReady) {
+            ctx.strokeStyle = '#9ff7c7';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(dx + 3, dy + 3, width - 6, height - 6);
+          } else {
+            ctx.fillStyle = 'rgba(14, 20, 33, 0.35)';
+            ctx.fillRect(dx, dy, width, height);
+          }
+        }
+
         const artX = dx + CONFIG.handCard.artX;
         const artY = dy + CONFIG.handCard.artY;
         const artW = width - (CONFIG.handCard.width - CONFIG.handCard.artW);
@@ -1821,7 +1999,9 @@
 
         ctx.textAlign = 'left';
         ctx.font = 'bold 12px Arial';
-        const icon = card.effect?.kind === 'damage' ? TEXT.cardFace.damageIcon : TEXT.cardFace.shardIcon;
+        const icon = card.effect?.kind === 'damage'
+          ? TEXT.cardFace.damageIcon
+          : (card.effect?.kind === 'defense' ? TEXT.cardFace.defenseIcon : TEXT.cardFace.shardIcon);
         const resultColor = preview?.playable
           ? (preview?.enhancedActive ? '#f0d76b' : '#ffffff')
           : '#ff9ea1';
@@ -2224,6 +2404,7 @@ function drawLogOverlay() {
         gameState.ui.highlight.validActorIds = [];
         gameState.ui.highlight.validTargetIds = [];
         gameState.ui.handCardPreviewById = {};
+        clearDefenseReactionState();
         gameState.logScroll = 0;
         gameState.detailScroll = 0;
         gameState.field = {
