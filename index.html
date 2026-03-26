@@ -78,7 +78,7 @@
           topY: 16,
           titleY: 34,
           reqY: 16,
-          resultY: 108,
+          resultY: 82,
           iconY: 126,
           noteY: 138,
         },
@@ -2072,18 +2072,26 @@
       }
 
       function drawCardRequirementIcons(card, x, y) {
+        const getElementIcon = (element) => {
+          if (element === 'fire') return '🔥';
+          if (element === 'thunder') return '⚡';
+          if (element === 'earth') return '🌱';
+          return '•';
+        };
         const icons = [];
         ELEMENTS.forEach((element) => {
           const need = card?.requirement?.[element] ?? 0;
-          if (need > 0) icons.push(`${capitalize(element).slice(0, 1)}${need}`);
+          for (let i = 0; i < need; i += 1) {
+            icons.push(getElementIcon(element));
+          }
         });
         if (card?.requiredAttackType) {
-          icons.push(card.requiredAttackType.slice(0, 1).toUpperCase());
+          icons.push(getElementIcon(card.requiredAttackType));
         }
         if (icons.length === 0) return;
         ctx.save();
         ctx.textAlign = 'left';
-        ctx.font = 'bold 10px Arial';
+        ctx.font = '12px Arial';
         ctx.fillStyle = '#d4e4ff';
         ctx.fillText(icons.join(' '), x, y);
         ctx.restore();
@@ -2157,13 +2165,19 @@
         const icon = card.effect?.kind === 'damage'
           ? TEXT.cardFace.damageIcon
           : (card.effect?.kind === 'defense' ? TEXT.cardFace.defenseIcon : TEXT.cardFace.shardIcon);
+        const shardElementIcon = card.effect?.energy === 'fire'
+          ? '🔥'
+          : (card.effect?.energy === 'thunder' ? '⚡' : (card.effect?.energy === 'earth' ? '🌱' : '✦'));
+        const resultText = card.effect?.kind === 'shard'
+          ? `+1💪 +1${shardElementIcon}`
+          : `${preview?.mainValue || '-'}`;
         const resultColor = preview?.playable
           ? (preview?.enhancedActive ? '#f0d76b' : '#ffffff')
           : '#ff9ea1';
-        ctx.textAlign = 'left';
+        ctx.textAlign = 'center';
         ctx.fillStyle = resultColor;
-        ctx.font = 'bold 18px Arial';
-        ctx.fillText(`${icon}${preview?.mainValue || '-'}`, dx + 8, dy + CONFIG.handCard.resultY);
+        ctx.font = card.effect?.kind === 'shard' ? 'bold 16px Arial' : 'bold 28px Arial';
+        ctx.fillText(`${resultText}${card.effect?.kind === 'damage' ? icon : ''}`, dx + width / 2, dy + CONFIG.handCard.resultY);
 
         ctx.textAlign = 'right';
         ctx.font = 'bold 11px Arial';
