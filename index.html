@@ -70,14 +70,17 @@
           width: 142,
           height: 146,
           gap: 10,
+          markerSize: 16,
           artX: 8,
           artY: 22,
           artW: 126,
           artH: 72,
           topY: 16,
+          titleY: 34,
+          reqY: 16,
           resultY: 108,
-          iconY: 122,
-          noteY: 136,
+          iconY: 126,
+          noteY: 138,
         },
         enemyMiniCard: { width: 62, height: 88, gap: 6 },
         button: { width: 132, height: 32, gap: 10 },
@@ -230,6 +233,13 @@
           damageIcon: '⚔',
           shardIcon: '✦',
           defenseIcon: '🛡',
+          categoryAtk: '⚔',
+          categoryDef: '🛡',
+          categorySup: '✚',
+          categoryEvd: '➤',
+          effectEnhance: '⬢',
+          effectConsume: '◈',
+          effectType: '◆',
           consumePrefix: 'OPT',
           enhancePrefix: 'ENH',
           noOptional: '-',
@@ -326,6 +336,9 @@
             enhanceSummary: '',
             resultSummary: '',
             enhancedActive: false,
+            mainValue: '',
+            specialIcons: [],
+            hasEnhance: false,
           },
           handCardPreviewById: {},
           defenseReaction: {
@@ -341,6 +354,10 @@
             remainingMs: 0,
             defendedByCardId: null,
             reducedDamage: 0,
+          },
+          defenseResolveDelay: {
+            active: false,
+            until: 0,
           },
           defenseResolveDelay: {
             active: false,
@@ -870,6 +887,9 @@
           enhanceSummary: '',
           resultSummary: '',
           enhancedActive: false,
+          mainValue: '',
+          specialIcons: [],
+          hasEnhance: false,
         };
 
         if (!state || !card || !side) return empty;
@@ -896,6 +916,18 @@
           : (cardInHand.effect?.kind === 'shard'
             ? `Gain +${CONFIG.energy.shardGain} Guts / +${CONFIG.energy.shardGain} Energy`
             : `Block ${cardInHand.effect?.blockAmount ?? 0}`);
+        const mainValue = cardInHand.effect?.kind === 'damage'
+          ? `${damagePreview}`
+          : (cardInHand.effect?.kind === 'shard'
+            ? `+${CONFIG.energy.shardGain}`
+            : `${cardInHand.effect?.blockAmount ?? 0}`);
+        const specialIcons = [];
+        if ((cardInHand.consume?.fire ?? 0) + (cardInHand.consume?.thunder ?? 0) + (cardInHand.consume?.earth ?? 0) > 0) {
+          specialIcons.push(TEXT.cardFace.effectConsume);
+        }
+        if (cardInHand.type === 'TYPE' || cardInHand.requiredAttackType) {
+          specialIcons.push(TEXT.cardFace.effectType);
+        }
 
         let effectText = formatText(TEXT.preview.effectOther, { kind: cardInHand.effect?.kind ?? 'none' });
         if (cardInHand.effect?.kind === 'damage') {
@@ -946,6 +978,9 @@
           enhanceSummary,
           resultSummary,
           enhancedActive: enhanced,
+          mainValue,
+          specialIcons,
+          hasEnhance: !!cardInHand.enhance,
         };
       }
 
@@ -2029,6 +2064,31 @@
         ctx.fillText(`Discard ${gameState.enemy.discard.length}`, x + 10, y + 78);
       }
 
+      function getCardCategoryStyle(card) {
+        if (card?.effect?.kind === 'defense') return { icon: TEXT.cardFace.categoryDef, color: '#7fb6ff' };
+        if (card?.category === 'sup' || card?.effect?.kind === 'shard') return { icon: TEXT.cardFace.categorySup, color: '#8edc9a' };
+        if (card?.category === 'evade') return { icon: TEXT.cardFace.categoryEvd, color: '#8ecfff' };
+        return { icon: TEXT.cardFace.categoryAtk, color: '#ffb17a' };
+      }
+
+      function drawCardRequirementIcons(card, x, y) {
+        const icons = [];
+        ELEMENTS.forEach((element) => {
+          const need = card?.requirement?.[element] ?? 0;
+          if (need > 0) icons.push(`${capitalize(element).slice(0, 1)}${need}`);
+        });
+        if (card?.requiredAttackType) {
+          icons.push(card.requiredAttackType.slice(0, 1).toUpperCase());
+        }
+        if (icons.length === 0) return;
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 10px Arial';
+        ctx.fillStyle = '#d4e4ff';
+        ctx.fillText(icons.join(' '), x, y);
+        ctx.restore();
+      }
+
       function drawPlayerCard(card, x, y, hover) {
         const preview = gameState.ui.handCardPreviewById?.[card.id] || null;
         const selectedForGuts = gameState.temp.gutsSelectedCardIds.includes(card.id);
@@ -2040,6 +2100,10 @@
         const dy = y - (height - CONFIG.handCard.height) / 2;
 
         drawPanel(dx, dy, width, height);
+        const categoryStyle = getCardCategoryStyle(card);
+        ctx.strokeStyle = categoryStyle.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dx + 1, dy + 1, width - 2, height - 2);
 
         if (hover) {
           ctx.strokeStyle = CONFIG.colors.playableGlow;
@@ -2077,35 +2141,41 @@
         const artH = CONFIG.handCard.artH;
         drawAssetOrFallback(card.asset, artX, artY, artW, artH, card.id);
 
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 13px Arial';
-        ctx.fillText(card.name, dx + 8, dy + CONFIG.handCard.topY);
-        ctx.textAlign = 'right';
-        ctx.fillText(`${card.cost}`, dx + width - 8, dy + CONFIG.handCard.topY);
-
+        ctx.fillStyle = categoryStyle.color;
         ctx.textAlign = 'left';
         ctx.font = 'bold 12px Arial';
+        ctx.fillText(categoryStyle.icon, dx + 8, dy + CONFIG.handCard.topY);
+        drawCardRequirementIcons(card, dx + 26, dy + CONFIG.handCard.reqY);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText(card.name, dx + 8, dy + CONFIG.handCard.titleY);
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText(`${card.cost}`, dx + width - 8, dy + CONFIG.handCard.topY);
+
         const icon = card.effect?.kind === 'damage'
           ? TEXT.cardFace.damageIcon
           : (card.effect?.kind === 'defense' ? TEXT.cardFace.defenseIcon : TEXT.cardFace.shardIcon);
         const resultColor = preview?.playable
           ? (preview?.enhancedActive ? '#f0d76b' : '#ffffff')
           : '#ff9ea1';
+        ctx.textAlign = 'left';
         ctx.fillStyle = resultColor;
-        ctx.fillText(`${icon} ${preview?.resultSummary || TEXT.state.none}`, dx + 8, dy + CONFIG.handCard.resultY);
-
-        ctx.font = '11px Arial';
-        ctx.fillStyle = '#b8cbf0';
-        ctx.fillText(`${card.type || 'N/A'}`, dx + 8, dy + CONFIG.handCard.iconY);
-
-        const consumeActive = (preview?.consumeSummary || TEXT.cardFace.noOptional) !== TEXT.cardFace.noOptional;
-        ctx.fillStyle = consumeActive ? '#cce6ff' : '#808ea9';
-        ctx.fillText(`${TEXT.cardFace.consumePrefix} ${preview?.consumeSummary || TEXT.cardFace.noOptional}`, dx + 8, dy + CONFIG.handCard.noteY);
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`${icon}${preview?.mainValue || '-'}`, dx + 8, dy + CONFIG.handCard.resultY);
 
         ctx.textAlign = 'right';
-        ctx.fillStyle = preview?.enhancedActive ? '#e9da7b' : '#8aa3c9';
-        ctx.fillText(`${TEXT.cardFace.enhancePrefix} ${preview?.enhanceSummary || TEXT.cardFace.noOptional}`, dx + width - 8, dy + CONFIG.handCard.noteY);
+        ctx.font = 'bold 11px Arial';
+        ctx.fillStyle = '#b8cbf0';
+        const specialIcons = Array.isArray(preview?.specialIcons) ? preview.specialIcons : [];
+        if (specialIcons.length > 0) {
+          ctx.fillText(specialIcons.join(' '), dx + width - 8, dy + CONFIG.handCard.iconY);
+        }
+        if (preview?.hasEnhance) {
+          ctx.fillStyle = preview?.enhancedActive ? '#e9da7b' : '#8aa3c9';
+          ctx.fillText(TEXT.cardFace.effectEnhance, dx + width - 8, dy + CONFIG.handCard.noteY);
+        }
 
         if (!preview?.playable && gameState.turnPhase === 'attack') {
           ctx.fillStyle = CONFIG.colors.cardDisabled;
