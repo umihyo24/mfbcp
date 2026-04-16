@@ -53,18 +53,18 @@
         fieldPanel: { x: 800, y: 492, width: 376, height: 254 },
         monsterCard: {
           width: 242,
-          height: 172,
+          height: 156,
           gap: 8,
-          iconSize: 114,
-          hpBarWidth: 204,
-          hpBarHeight: 14,
+          rowGap: 14,
           padding: 10,
-          nameY: 24,
-          hpBarY: 134,
-          hpTextY: 156,
+          portraitW: 92,
+          portraitH: 92,
+          hpBarHeight: 12,
           badgeSize: 18,
           badgeGap: 6,
           edgeInset: 2,
+          reserveDotSize: 9,
+          reserveDotGap: 5,
         },
         handCard: {
           width: 142,
@@ -549,6 +549,22 @@
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(label || key || 'missing', x + w / 2, y + h / 2 + 4);
+      }
+
+      function drawAssetContainOrFallback(key, x, y, w, h, label) {
+        const ref = getImageRef(key);
+        if (ref && ref.ok && ref.image) {
+          const imageW = ref.image.naturalWidth || w;
+          const imageH = ref.image.naturalHeight || h;
+          const scale = Math.min(w / Math.max(1, imageW), h / Math.max(1, imageH));
+          const drawW = Math.max(1, Math.floor(imageW * scale));
+          const drawH = Math.max(1, Math.floor(imageH * scale));
+          const drawX = x + Math.floor((w - drawW) / 2);
+          const drawY = y + Math.floor((h - drawH) / 2);
+          ctx.drawImage(ref.image, drawX, drawY, drawW, drawH);
+          return;
+        }
+        drawAssetOrFallback(key, x, y, w, h, label);
       }
 
       function setEnemyMessage(message) {
@@ -1790,6 +1806,7 @@
       }
 
       function drawMonsterCard(monster, side, x, y) {
+        if (!monster) return;
         drawPanel(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
 
         const highlight = gameState.ui.highlight || {};
@@ -1814,9 +1831,20 @@
         const activeTurnMonster = gameState.turnSide === side && gameState.turnPhase === 'attack';
         const cardPadding = CONFIG.monsterCard.padding;
         const portraitX = x + cardPadding;
-        const portraitY = y + cardPadding;
-        const portraitW = CONFIG.monsterCard.width - cardPadding * 2;
+        const portraitY = y + cardPadding + 18;
+        const portraitW = CONFIG.monsterCard.portraitW;
+        const portraitH = CONFIG.monsterCard.portraitH;
+        const infoX = portraitX + portraitW + 10;
+        const infoW = CONFIG.monsterCard.width - (infoX - x) - cardPadding;
+        const hpBarY = y + CONFIG.monsterCard.height - 38;
+        const hpBarW = Math.max(84, infoW - 4);
+        const hpPercent = monster.maxHp > 0
+          ? Math.max(0, Math.min(100, Math.floor((monster.hp * 100) / monster.maxHp)))
+          : 0;
         const inset = CONFIG.monsterCard.edgeInset;
+
+        ctx.fillStyle = '#1a2f5e';
+        ctx.fillRect(x, y, CONFIG.monsterCard.width, CONFIG.monsterCard.height);
 
         if (selectedActor) {
           ctx.strokeStyle = CONFIG.colors.actorStrong;
@@ -1835,27 +1863,32 @@
           ctx.strokeRect(x + inset, y + inset, CONFIG.monsterCard.width - inset * 2, CONFIG.monsterCard.height - inset * 2);
         }
 
-        drawAssetOrFallback(
-          monster.asset,
-          portraitX,
-          portraitY,
-          portraitW,
-          CONFIG.monsterCard.iconSize,
-          monster.id
-        );
+        ctx.fillStyle = '#132441';
+        ctx.fillRect(portraitX, portraitY, portraitW, portraitH);
+        ctx.strokeStyle = 'rgba(120, 157, 225, 0.9)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(portraitX, portraitY, portraitW, portraitH);
+        drawAssetContainOrFallback(monster.asset, portraitX + 2, portraitY + 2, portraitW - 4, portraitH - 4, monster.id);
 
         drawMonsterTypeBadges(monster, x, y);
 
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'left';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText(monster.name, x + 12, y + CONFIG.monsterCard.nameY);
+        ctx.font = 'bold 15px Arial';
+        ctx.fillText(monster.name, infoX, y + 30);
 
-        drawMonsterHpBar(monster, x + 12, y + CONFIG.monsterCard.hpBarY, CONFIG.monsterCard.hpBarWidth, CONFIG.monsterCard.hpBarHeight);
+        drawMonsterHpBar(monster, infoX, hpBarY, hpBarW, CONFIG.monsterCard.hpBarHeight);
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px Arial';
-        ctx.fillText(`HP ${monster.hp}`, x + 12, y + CONFIG.monsterCard.hpTextY);
+        ctx.fillStyle = '#d8e5ff';
+        ctx.font = '13px Arial';
+        ctx.fillText(`HP ${monster.hp} / ${monster.maxHp} (${hpPercent}%)`, infoX, hpBarY - 6);
+
+        const statusText = disabled
+          ? TEXT.monster.down
+          : (acted ? TEXT.monster.acted : (unusableActor || unusableTarget ? TEXT.monster.disabled : TEXT.state.none));
+        ctx.fillStyle = disabled ? '#c8d1e8' : '#ffd073';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText(`Status: ${statusText}`, infoX, hpBarY + 22);
 
         if (unusableState) {
           ctx.fillStyle = disabled ? CONFIG.colors.dead : 'rgba(10, 14, 24, 0.48)';
@@ -1874,6 +1907,8 @@
           ctx.strokeRect(x + 4, y + 4, CONFIG.monsterCard.width - 8, CONFIG.monsterCard.height - 8);
         }
 
+        drawReserveIndicator(side, monster, x, y);
+
         gameState.uiRects.monsters.push({
           id: monster.id,
           side,
@@ -1882,6 +1917,42 @@
           w: CONFIG.monsterCard.width,
           h: CONFIG.monsterCard.height
         });
+      }
+
+      function getReserveCount(side, currentMonsterId) {
+        const sideState = gameState?.[side];
+        const roster = Array.isArray(sideState?.monsters) ? sideState.monsters : [];
+        const aliveCount = roster.filter((monster) => monster?.alive).length;
+        if (!currentMonsterId) return Math.max(0, aliveCount);
+        const currentAlive = roster.some((monster) => monster?.id === currentMonsterId && monster?.alive);
+        return Math.max(0, aliveCount - (currentAlive ? 1 : 0));
+      }
+
+      function drawReserveIndicator(side, monster, x, y) {
+        const reserveCount = getReserveCount(side, monster?.id);
+        const dotSize = CONFIG.monsterCard.reserveDotSize;
+        const gap = CONFIG.monsterCard.reserveDotGap;
+        const maxDots = Math.min(5, reserveCount);
+        const dotsW = maxDots > 0 ? maxDots * dotSize + (maxDots - 1) * gap : 0;
+        const rightX = x + CONFIG.monsterCard.width - 10;
+        const baselineY = y + CONFIG.monsterCard.height - 12;
+
+        ctx.fillStyle = '#b9ccf6';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`RES ${reserveCount}`, rightX, baselineY - 14);
+
+        const startX = rightX - dotsW;
+        for (let i = 0; i < maxDots; i += 1) {
+          const dotX = startX + i * (dotSize + gap);
+          ctx.beginPath();
+          ctx.fillStyle = '#7bc8ff';
+          ctx.arc(dotX + dotSize / 2, baselineY - dotSize / 2, dotSize / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#d8ecff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       }
 
       function drawMonsterTypeBadges(monster, x, y) {
@@ -1924,15 +1995,17 @@
 
       function drawBattleArea() {
         drawPanel(CONFIG.monsterArea.x, CONFIG.monsterArea.y, CONFIG.monsterArea.width, CONFIG.monsterArea.height);
+        const cardTopY = CONFIG.monsterArea.y + 10;
+        const cardBottomY = cardTopY + CONFIG.monsterCard.height + CONFIG.monsterCard.rowGap;
 
         gameState.enemy.monsters.forEach((monster, index) => {
           const x = CONFIG.monsterArea.x + 10 + index * (CONFIG.monsterCard.width + CONFIG.monsterCard.gap);
-          drawMonsterCard(monster, 'enemy', x, CONFIG.monsterArea.y + 10);
+          drawMonsterCard(monster, 'enemy', x, cardTopY);
         });
 
         gameState.player.monsters.forEach((monster, index) => {
           const x = CONFIG.monsterArea.x + 10 + index * (CONFIG.monsterCard.width + CONFIG.monsterCard.gap);
-          drawMonsterCard(monster, 'player', x, CONFIG.monsterArea.y + 186);
+          drawMonsterCard(monster, 'player', x, cardBottomY);
         });
 
         if (gameState.ui.effectPreview.visible) {
